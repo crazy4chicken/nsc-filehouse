@@ -91,7 +91,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 或推送一个 `v*` 标签，由 [release workflow](../.github/workflows/release.yml) 自动构建并发布
 svchost 兼容资产 `filehouse_<version>_<arch>.zip`（`x64`、`arm64`），入口二进制
-`filehouse` 位于 ZIP 根目录：
+`filehouse` 位于 ZIP 根目录；每个资产的 SHA-256 会写进该次运行页的 Summary，可直接抄进
+compose 模板的 `sha256`。`v0.1.0` 已按此流程发布（见 §3 模板中的摘要）：
 
 ```sh
 git tag v0.1.0 && git push origin v0.1.0
@@ -139,12 +140,16 @@ services:
 
   filehouse:
     source:
-      # 首次部署前先推 v0.1.0 标签让 workflow 发布资产，再把摘要填到这里：
-      #   curl -L -o fw.zip \
+      # v0.1.0 已发布；下面是两个架构资产在 GitHub release API 上的真实摘要：
+      #   x64   filehouse_0.1.0_x64.zip   57a6c9c9b798fa22fadcc2b614f94b2c7395da5dde692d2737f19b9e1ead8c2c
+      #   arm64 filehouse_0.1.0_arm64.zip 58c7b1dc778ef19563cf6a9dd220db3d0e582d9486ec53e885868fd9788cd273
+      # 后续版本：推 v* 标签让 release workflow 发布资产，摘要见该次运行的 Summary；
+      # 或本地核对：
+      #   curl -fSL -o fw.zip \
       #     https://github.com/crazy4chicken/nsc-filehouse/releases/download/v0.1.0/filehouse_0.1.0_x64.zip
       #   sha256sum fw.zip
       release: "github:crazy4chicken/nsc-filehouse@v0.1.0"
-      sha256: "<filehouse_0.1.0_x64.zip 的 SHA-256>"
+      sha256: "57a6c9c9b798fa22fadcc2b614f94b2c7395da5dde692d2737f19b9e1ead8c2c"
       # 还没有 release 时，可先用本地路径起步：
       # path: /opt/filehouse/filehouse
     args: ["run"]
