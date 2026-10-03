@@ -104,3 +104,19 @@ jobs:
           gh release create "$TAG" --title "$TAG" --generate-notes \
             || gh release view "$TAG" >/dev/null
           gh release upload "$TAG" dist/*.zip --clobber
+
+      # The compose template pins one digest per architecture; publishing them
+      # in the run summary removes the manual download-and-hash step.
+      - name: Report asset digests
+        run: |
+          {
+            echo "### $TAG assets"
+            echo
+            echo '| asset | sha256 |'
+            echo '| --- | --- |'
+            for asset in dist/*.zip; do
+              digest=$(sha256sum "$asset" | cut -d' ' -f1)
+              echo "| $(basename "$asset") | $digest |"
+              echo "$(basename "$asset") $digest"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
