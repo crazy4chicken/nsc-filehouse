@@ -1,0 +1,17 @@
+# Local data: content addressed blobs, multipart staging, presign keys.
+data/
+
+# Local scaffolding (verification builds, tokens, scratch databases helpers).
+.tmp/
+
+# Build output
+*.exe
+/bin/
+
+# Environment files (secrets)
+.env
+
+# Coverage output
+coverage.out
+coverage.html
+*.coverprofile
