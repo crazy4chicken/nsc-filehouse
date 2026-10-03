@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/migrations"
+	"github.com/crazy4chicken/nsc-filehouse/migrations"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )

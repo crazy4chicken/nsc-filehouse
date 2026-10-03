@@ -41,10 +41,10 @@ jobs:
           go-version-file: go.mod
 
       # svchost release contract: the asset must be named
-      # filewarehouse_<version>_<arch>.zip and the entry binary must sit at
-      # the ZIP root with the exact service name "filewarehouse".
+      # filehouse_<version>_<arch>.zip and the entry binary must sit at
+      # the ZIP root with the exact service name "filehouse".
       # The nats build tag compiles the teamusers SDK event subscriptions so a
-      # deployment can set FILEWAREHOUSE_TEAMUSERS_NATS_URL; without the tag
+      # deployment can set FILEHOUSE_TEAMUSERS_NATS_URL; without the tag
       # that setting only produces a warning.
       - name: Build
         env:
@@ -53,14 +53,14 @@ jobs:
         run: |
           CGO_ENABLED=0 go build -trimpath -tags nats \
             -ldflags "-s -w -X main.version=$TAG" \
-            -o dist/filewarehouse ./cmd/filewarehouse
+            -o dist/filehouse ./cmd/filehouse
 
       - name: Package
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           cd dist
-          zip "filewarehouse_${TAG#v}_${ARCH}.zip" filewarehouse
+          zip "filehouse_${TAG#v}_${ARCH}.zip" filehouse
 
       # archive: false uploads the ZIP as-is; the artifact name becomes the
       # file name, which the publish job matches by pattern.
@@ -84,11 +84,11 @@ jobs:
 
       # skip-decompress: the uploads are raw .zip files (archive: false);
       # without this the client would unzip them and both architectures
-      # would clobber the same bare "filewarehouse" entry.
+      # would clobber the same bare "filehouse" entry.
       - name: Download assets
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
-          pattern: filewarehouse_*.zip
+          pattern: filehouse_*.zip
           path: dist
           merge-multiple: true
           skip-decompress: true

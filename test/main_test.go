@@ -12,16 +12,16 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/blob"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/config"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/presign"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/blob"
+	"github.com/crazy4chicken/nsc-filehouse/internal/config"
+	"github.com/crazy4chicken/nsc-filehouse/internal/presign"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 // envTestDatabase gates the integration suite. When it is unset every test in
 // this package skips, so `go test ./test/...` stays green on machines without
 // PostgreSQL.
-const envTestDatabase = "FILEWAREHOUSE_TEST_PG"
+const envTestDatabase = "FILEHOUSE_TEST_PG"
 
 // suite holds the process-wide dependencies shared by every test. Each test
 // rebuilds the fixture IAM server and the HTTP server but reuses the database
@@ -39,7 +39,7 @@ type suite struct {
 var testSuite *suite
 
 // TestMain opens PostgreSQL, applies migrations and prepares the shared test
-// dependencies once. A missing FILEWAREHOUSE_TEST_PG is not an error: the
+// dependencies once. A missing FILEHOUSE_TEST_PG is not an error: the
 // tests skip themselves.
 func TestMain(m *testing.M) {
 	dsn := os.Getenv(envTestDatabase)
@@ -60,7 +60,7 @@ func TestMain(m *testing.M) {
 		metadata.Close()
 		os.Exit(1)
 	}
-	rootDir, err := os.MkdirTemp("", "filewarehouse-test-*")
+	rootDir, err := os.MkdirTemp("", "filehouse-test-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "integration suite: temp dir: %v\n", err)
 		metadata.Close()
@@ -138,7 +138,7 @@ func testConfig(rootDir string) *config.Config {
 	}
 }
 
-// requireSuite skips the calling test when FILEWAREHOUSE_TEST_PG is unset.
+// requireSuite skips the calling test when FILEHOUSE_TEST_PG is unset.
 func requireSuite(t *testing.T) *suite {
 	t.Helper()
 	if testSuite == nil {

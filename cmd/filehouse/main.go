@@ -1,7 +1,7 @@
-// Command filewarehouse runs the Nekostick object storage microservice.
+// Command filehouse runs the Nekostick object storage microservice.
 //
 // Subcommands: run (default), status, doctor, register-permissions. Flags are
-// documented by -h; every value can also come from a FILEWAREHOUSE_* environment
+// documented by -h; every value can also come from a FILEHOUSE_* environment
 // variable.
 package main
 
@@ -20,20 +20,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/blob"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/config"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/gc"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpapi"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/iamauth"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/presign"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/blob"
+	"github.com/crazy4chicken/nsc-filehouse/internal/config"
+	"github.com/crazy4chicken/nsc-filehouse/internal/gc"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpapi"
+	"github.com/crazy4chicken/nsc-filehouse/internal/iamauth"
+	"github.com/crazy4chicken/nsc-filehouse/internal/presign"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 // version is set at build time with -ldflags "-X main.version=<version>".
 var version = "dev"
 
 const (
-	serviceName     = "filewarehouse"
+	serviceName     = "filehouse"
 	shutdownTimeout = 10 * time.Second
 	doctorTimeout   = 30 * time.Second
 	registerTimeout = 60 * time.Second

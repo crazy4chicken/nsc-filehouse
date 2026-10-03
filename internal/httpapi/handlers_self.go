@@ -6,8 +6,8 @@ import (
 
 	iam "github.com/crazy4chicken/nsc-teamusers/sdk/go"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 // subjectRef identifies a subject on the wire.

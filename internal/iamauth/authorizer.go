@@ -1,5 +1,5 @@
-// Package iamauth wires the nsc-teamusers Go SDK into nsc-filewarehouse:
-// bearer-token authentication, the filewarehouse permission catalog, the scope
+// Package iamauth wires the nsc-teamusers Go SDK into nsc-filehouse:
+// bearer-token authentication, the filehouse permission catalog, the scope
 // cascade used for authorization decisions, and the service credential
 // sources used to call teamusers.
 //
@@ -21,7 +21,7 @@ import (
 
 	iam "github.com/crazy4chicken/nsc-teamusers/sdk/go"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
 )
 
 // Options configures the teamusers-backed Authorizer. The zero value is not
@@ -61,7 +61,7 @@ const (
 	// defaultHTTPTimeout bounds IAM calls when Options.Timeout is unset.
 	defaultHTTPTimeout = 10 * time.Second
 	// resourceSegment is the permission resource owned by this service.
-	resourceSegment = "filewarehouse"
+	resourceSegment = "filehouse"
 	// policyDeniedReason is the SDK reason that marks an explicit deny; it is
 	// terminal for the scope cascade.
 	policyDeniedReason = "permission denied"
@@ -73,7 +73,7 @@ const (
 // partially constructed Authorizer. Every decision path fails closed.
 var errAuthorizerUnavailable = errors.New("iam: authorizer is not configured")
 
-// verbActions is the set of permission actions in the filewarehouse catalog.
+// verbActions is the set of permission actions in the filehouse catalog.
 var verbActions = map[string]struct{}{
 	"read":   {},
 	"write":  {},

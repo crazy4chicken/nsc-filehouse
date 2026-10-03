@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/blob"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/gc"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpapi"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/iamauth"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/iamfixture"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/blob"
+	"github.com/crazy4chicken/nsc-filehouse/internal/gc"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpapi"
+	"github.com/crazy4chicken/nsc-filehouse/internal/iamauth"
+	"github.com/crazy4chicken/nsc-filehouse/internal/iamfixture"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 // harness wires one isolated test: a truncated database, a fresh iamfixture
@@ -451,7 +451,7 @@ func TestUnrelatedPermissionForbidden(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("read-target", "alice", "")
 
-	token := h.authorize("bob", iamfixture.Grant{Key: "filewarehouse:write:own"})
+	token := h.authorize("bob", iamfixture.Grant{Key: "filehouse:write:own"})
 	problem := requireProblem(t, h.mustDo(t, http.MethodGet, "/api/v1/buckets/read-target", token, nil, nil),
 		http.StatusForbidden, "insufficient_permissions")
 	if problem.Reason == "" {
@@ -466,7 +466,7 @@ func TestScopeCascade(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("team-shared", "team-owner", "core")
 
-	carol := h.authorize("carol", iamfixture.Grant{Key: "filewarehouse:read:any"})
+	carol := h.authorize("carol", iamfixture.Grant{Key: "filehouse:read:any"})
 	opened := h.mustDo(t, http.MethodGet, "/api/v1/buckets/team-shared", carol, nil, nil)
 	requireStatus(t, opened, http.StatusOK)
 	if bucket := decodeJSON[bucketResponse](t, opened); bucket.Name != "team-shared" {
@@ -475,20 +475,20 @@ func TestScopeCascade(t *testing.T) {
 
 	h.seedBucket("dave-personal", "dave", "")
 	dave := h.authorize("dave",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "!filewarehouse:read:any"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "!filehouse:read:any"})
 	requireProblem(t, h.mustDo(t, http.MethodGet, "/api/v1/buckets/dave-personal", dave, nil, nil),
 		http.StatusForbidden, "insufficient_permissions")
 
 	// Control: the same own-scope allow without the deny succeeds, proving the
 	// explicit deny is what blocked Dave.
 	h.seedBucket("erin-personal", "erin", "")
-	erin := h.authorize("erin", iamfixture.Grant{Key: "filewarehouse:read:own"})
+	erin := h.authorize("erin", iamfixture.Grant{Key: "filehouse:read:own"})
 	control := h.mustDo(t, http.MethodGet, "/api/v1/buckets/erin-personal", erin, nil, nil)
 	requireStatus(t, control, http.StatusOK)
 
 	// Team scope: the team claim plus read:team opens the team's bucket.
-	h.fixture.SetGrants("frank", 1, iamfixture.Grant{Key: "filewarehouse:read:team"})
+	h.fixture.SetGrants("frank", 1, iamfixture.Grant{Key: "filehouse:read:team"})
 	frank := h.fixture.Issue(iamfixture.Claims{Subject: "frank", Kind: "user", Team: "core", PermVer: 1})
 	teamScoped := h.mustDo(t, http.MethodGet, "/api/v1/buckets/team-shared", frank, nil, nil)
 	requireStatus(t, teamScoped, http.StatusOK)
@@ -500,8 +500,8 @@ func TestObjectRoundTripRangeAndETag(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("objects", "erin", "")
 	token := h.authorize("erin",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"})
 
 	content := []byte("hello world")
 	digest := sha256Hex(content)
@@ -509,9 +509,9 @@ func TestObjectRoundTripRangeAndETag(t *testing.T) {
 	path := objectPath("objects", key)
 
 	created := h.mustDo(t, http.MethodPut, path, token, content, map[string]string{
-		"Content-Type":                  "text/plain",
-		"X-Filewarehouse-SHA256":        digest,
-		"X-Filewarehouse-Meta-Campaign": "spring",
+		"Content-Type":              "text/plain",
+		"X-Filehouse-SHA256":        digest,
+		"X-Filehouse-Meta-Campaign": "spring",
 	})
 	requireStatus(t, created, http.StatusCreated)
 	object := decodeJSON[objectResponse](t, created)
@@ -525,7 +525,7 @@ func TestObjectRoundTripRangeAndETag(t *testing.T) {
 	if got := created.Header.Get("ETag"); got != etag {
 		t.Fatalf("response ETag = %q, want %q", got, etag)
 	}
-	if got := created.Header.Get("X-Filewarehouse-SHA256"); got != digest {
+	if got := created.Header.Get("X-Filehouse-SHA256"); got != digest {
 		t.Fatalf("response sha256 = %q, want %q", got, digest)
 	}
 
@@ -537,13 +537,13 @@ func TestObjectRoundTripRangeAndETag(t *testing.T) {
 	if got := fetched.Header.Get("ETag"); got != etag {
 		t.Fatalf("GET ETag = %q, want %q", got, etag)
 	}
-	if got := fetched.Header.Get("X-Filewarehouse-SHA256"); got != digest {
+	if got := fetched.Header.Get("X-Filehouse-SHA256"); got != digest {
 		t.Fatalf("GET sha256 = %q, want %q", got, digest)
 	}
 	if got := fetched.Header.Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("GET content type = %q, want text/plain", got)
 	}
-	if got := fetched.Header.Get("X-Filewarehouse-Meta-Campaign"); got != "spring" {
+	if got := fetched.Header.Get("X-Filehouse-Meta-Campaign"); got != "spring" {
 		t.Fatalf("GET metadata header = %q, want spring", got)
 	}
 
@@ -566,7 +566,7 @@ func TestObjectRoundTripRangeAndETag(t *testing.T) {
 	}
 
 	bad := h.mustDo(t, http.MethodPut, objectPath("objects", "bad.bin"), token, content,
-		map[string]string{"X-Filewarehouse-SHA256": strings.Repeat("0", 64)})
+		map[string]string{"X-Filehouse-SHA256": strings.Repeat("0", 64)})
 	requireProblem(t, bad, http.StatusUnprocessableEntity, "checksum_mismatch")
 }
 
@@ -577,9 +577,9 @@ func TestContentDedupAndReaper(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("dedup", "frank", "")
 	token := h.authorize("frank",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"},
-		iamfixture.Grant{Key: "filewarehouse:delete:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"},
+		iamfixture.Grant{Key: "filehouse:delete:own"})
 
 	content := []byte("deduplicated payload")
 	first := h.mustDo(t, http.MethodPut, objectPath("dedup", "one.bin"), token, content, nil)
@@ -641,8 +641,8 @@ func TestMultipartUploadFlow(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("multipart", "ivan", "")
 	token := h.authorize("ivan",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"})
 
 	partOne := []byte("hello ")
 	partTwo := []byte("world")
@@ -728,8 +728,8 @@ func TestBucketQuotaExceeded(t *testing.T) {
 		t.Fatalf("seed quota bucket: %v", err)
 	}
 	token := h.authorize("gina",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"})
 
 	requireProblem(t, h.mustDo(t, http.MethodPut, objectPath("quota", "big.bin"), token, []byte("1234567890"), nil),
 		http.StatusRequestEntityTooLarge, "quota_exceeded")
@@ -757,9 +757,9 @@ func TestPresignedURLFlow(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("share", "gina", "")
 	token := h.authorize("gina",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"},
-		iamfixture.Grant{Key: "filewarehouse:share:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"},
+		iamfixture.Grant{Key: "filehouse:share:own"})
 
 	content := []byte("shared bytes")
 	requireStatus(t, h.mustDo(t, http.MethodPut, objectPath("share", "report.txt"), token, content, nil),
@@ -819,8 +819,8 @@ func TestObjectListCursorPagination(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("paging", "henry", "")
 	token := h.authorize("henry",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"})
 
 	keys := []string{"item-01", "item-02", "item-03", "item-04", "item-05"}
 	for _, key := range keys {
@@ -878,7 +878,7 @@ func itemKeys(items []objectResponse) []string {
 // while a different body is a 422 conflict.
 func TestIdempotencyReplay(t *testing.T) {
 	h := newHarness(t)
-	token := h.authorize("ida", iamfixture.Grant{Key: "filewarehouse:write:own"})
+	token := h.authorize("ida", iamfixture.Grant{Key: "filehouse:write:own"})
 	headers := map[string]string{"Idempotency-Key": "create-bucket-1"}
 
 	first := h.sendJSON(t, http.MethodPost, "/api/v1/buckets", token, map[string]any{"name": "idempotent-bucket"}, headers)
@@ -905,7 +905,7 @@ func TestIdempotencyReplay(t *testing.T) {
 func TestAdminEndpointsRequireManageGrant(t *testing.T) {
 	h := newHarness(t)
 	h.seedBucket("admin-visible", "alice", "")
-	admin := h.authorize("admin", iamfixture.Grant{Key: "filewarehouse:manage:any"})
+	admin := h.authorize("admin", iamfixture.Grant{Key: "filehouse:manage:any"})
 
 	statsResponse := h.mustDo(t, http.MethodGet, "/api/v1/admin/stats", admin, nil, nil)
 	requireStatus(t, statsResponse, http.StatusOK)
@@ -938,7 +938,7 @@ func TestAdminEndpointsRequireManageGrant(t *testing.T) {
 		t.Fatalf("quota row = %+v", stored)
 	}
 
-	nobody := h.authorize("nobody", iamfixture.Grant{Key: "filewarehouse:read:any"})
+	nobody := h.authorize("nobody", iamfixture.Grant{Key: "filehouse:read:any"})
 	requireProblem(t, h.mustDo(t, http.MethodGet, "/api/v1/admin/stats", nobody, nil, nil),
 		http.StatusForbidden, "insufficient_permissions")
 	requireProblem(t, h.mustDo(t, http.MethodGet, "/api/v1/admin/quotas", nobody, nil, nil),
@@ -962,8 +962,8 @@ func TestOrphanBlobReclaim(t *testing.T) {
 		t.Fatalf("seed quota bucket: %v", err)
 	}
 	token := h.authorize("lena",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"})
 
 	// Normalise the blob directory: the tables were just truncated, so every
 	// file left behind by an earlier test is an orphan with no row. One pass
@@ -1041,7 +1041,7 @@ func TestOrphanBlobReclaim(t *testing.T) {
 
 	// The admin GC endpoint embeds the pass report, so the orphan counters are
 	// part of its response.
-	admin := h.authorize("admin", iamfixture.Grant{Key: "filewarehouse:manage:any"})
+	admin := h.authorize("admin", iamfixture.Grant{Key: "filehouse:manage:any"})
 	gcResponse := h.sendJSON(t, http.MethodPost, "/api/v1/admin/gc", admin, nil, nil)
 	requireStatus(t, gcResponse, http.StatusOK)
 	gcReport := decodeJSON[map[string]any](t, gcResponse)
@@ -1069,8 +1069,8 @@ func TestOrphanSweepContinuesPastPage(t *testing.T) {
 
 	h.seedBucket("paged", "mia", "")
 	token := h.authorize("mia",
-		iamfixture.Grant{Key: "filewarehouse:read:own"},
-		iamfixture.Grant{Key: "filewarehouse:write:own"})
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"})
 
 	// Five live objects. Their blobs are never deleted, so they form a barrier
 	// that a walk restarting from the top can never see past.

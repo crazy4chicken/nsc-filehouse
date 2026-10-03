@@ -10,12 +10,12 @@ import (
 	iam "github.com/crazy4chicken/nsc-teamusers/sdk/go"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/config"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/config"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
-// Permission actions, scopes and the resource segment of the filewarehouse
+// Permission actions, scopes and the resource segment of the filehouse
 // catalog (§1). "*" matches exactly one segment.
 const (
 	verbRead   = "read"
@@ -28,7 +28,7 @@ const (
 
 	wildcardSegment = "*"
 
-	permissionResource = "filewarehouse"
+	permissionResource = "filehouse"
 )
 
 // Pagination bounds of the HTTP surface (§0): default 100, maximum 1000.

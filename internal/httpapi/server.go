@@ -1,4 +1,4 @@
-// Package httpapi exposes the filewarehouse HTTP surface on a chi router.
+// Package httpapi exposes the filehouse HTTP surface on a chi router.
 package httpapi
 
 import (
@@ -9,13 +9,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/blob"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/config"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/gc"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/iamauth"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/presign"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/blob"
+	"github.com/crazy4chicken/nsc-filehouse/internal/config"
+	"github.com/crazy4chicken/nsc-filehouse/internal/gc"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/iamauth"
+	"github.com/crazy4chicken/nsc-filehouse/internal/presign"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 // Options carries every dependency of the HTTP layer. Store, Blobs, Authorizer,

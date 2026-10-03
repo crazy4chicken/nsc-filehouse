@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
 )
 
 const readinessTimeout = 5 * time.Second

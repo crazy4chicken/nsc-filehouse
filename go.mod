@@ -1,4 +1,4 @@
-module github.com/crazy4chicken/nsc-filewarehouse
+module github.com/crazy4chicken/nsc-filehouse
 
 go 1.26.0
 

@@ -12,23 +12,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/blob"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/blob"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 const (
 	// maxObjectKeyBytes is the contract object key bound (§5).
 	maxObjectKeyBytes = 1024
 	// metadataHeaderPrefix carries object metadata on writes and reads.
-	metadataHeaderPrefix = "X-Filewarehouse-Meta-"
+	metadataHeaderPrefix = "X-Filehouse-Meta-"
 	// maxMetadataBytes is the contract metadata bound (§5).
 	maxMetadataBytes = 2 << 10
 	// defaultObjectContentType is stored when a request supplies none.
 	defaultObjectContentType = "application/octet-stream"
 	// headerSHA256 carries the object digest: the bare lowercase sha256 hex on
 	// the wire, while the stored ETag is the quoted form.
-	headerSHA256 = "X-Filewarehouse-SHA256"
+	headerSHA256 = "X-Filehouse-SHA256"
 )
 
 // objectPage is the paginated object listing envelope.
@@ -132,7 +132,7 @@ func validateMetadata(metadata map[string]string) error {
 	return nil
 }
 
-// parseMetadataHeaders collects the X-Filewarehouse-Meta-* request headers. Go
+// parseMetadataHeaders collects the X-Filehouse-Meta-* request headers. Go
 // canonicalises header names, so the metadata key is the canonical suffix, the
 // only spelling the server can observe, and it round-trips through reads.
 func parseMetadataHeaders(r *http.Request) (map[string]string, error) {

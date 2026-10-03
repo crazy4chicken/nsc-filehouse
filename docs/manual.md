@@ -1,4 +1,4 @@
-# nsc-filewarehouse 技术手册
+# nsc-filehouse 技术手册
 
 面向开发与运维：架构与请求时序、鉴权与权限模型、数据模型与事务不变量、blob 存储与垃圾回收、完整 API 参考、
 完整配置表、运维手册、测试与已知限制。部署步骤（Nekostick compose、反向代理、升级流程）见
@@ -14,8 +14,8 @@
 
 | 位置 | 职责 |
 | --- | --- |
-| `cmd/filewarehouse/` | 子命令 `run`（默认）/ `status` / `doctor` / `register-permissions`、flag 绑定、日志、信号与 10s 优雅停机 |
-| `internal/config/` | 环境变量与 flag 装载（flag > `FILEWAREHOUSE_*` > `HOST`/`PORT` > 默认值）、校验、`Redacted()` |
+| `cmd/filehouse/` | 子命令 `run`（默认）/ `status` / `doctor` / `register-permissions`、flag 绑定、日志、信号与 10s 优雅停机 |
+| `internal/config/` | 环境变量与 flag 装载（flag > `FILEHOUSE_*` > `HOST`/`PORT` > 默认值）、校验、`Redacted()` |
 | `internal/httpx/` | RFC 9457 problem 文档、请求 id、不透明游标、JSON 体限制（1 MiB）、客户端 IP 解析 |
 | `internal/store/` | pgx 连接池、内嵌 goose 迁移、全部 SQL 与事务（桶、对象、blob、upload、配额、幂等） |
 | `internal/blob/` | 本地内容寻址存储：`blobs/` 落盘、`tmp/` 原子写、`uploads/` 分片暂存 |
@@ -25,7 +25,7 @@
 | `internal/httpapi/` | chi 路由、中间件、运行时 / 管理面 / 预签名 handler |
 | `internal/iamfixture/` | 仅测试用：模拟 teamusers（Ed25519 JWKS/JWT、权限缓存、client-credentials、权限注册） |
 | `migrations/` | `0001_init.sql` 与内嵌迁移执行器 |
-| `test/` | 由 `FILEWAREHOUSE_TEST_PG` 门控的 HTTP 级集成测试 |
+| `test/` | 由 `FILEHOUSE_TEST_PG` 门控的 HTTP 级集成测试 |
 
 ### 1.2 一次请求的完整时序
 
@@ -37,7 +37,7 @@
    `buckets`（不存在 `404 bucket_not_found`）。分片上传还会加载 upload 并校验它属于该桶、未过期。
 4. **权限级联**：构造 `iam.Resource{OwnerID, TeamID, Attrs}`，`Attrs` 视操作携带
    `bucket`/`key`/`size`/`content_type`/`uploader`/`part_no`，再按 `any → team → own` 顺序询问
-   `filewarehouse:<verb>:<scope>`；首个 allow 生效，显式 deny 终止，级联耗尽即拒绝。SDK 会把权限缓存/传输
+   `filehouse:<verb>:<scope>`；首个 allow 生效，显式 deny 终止，级联耗尽即拒绝。SDK 会把权限缓存/传输
    失败折合成拒绝（reason 含 `authorization service unavailable`），因此这类失败仍返回
    `403 insufficient_permissions`；只有 authorizer 缺失、`Decide` 返回错误、列表接口 `Grants` 失败或预签名
    兑换无法拉取权限时才返回 `503 iam_unavailable`。
@@ -49,7 +49,7 @@
 ### 1.3 拓扑前提
 
 受支持的生产拓扑是**一个可写 blob 目录对应一个副本**（见 §5.6、§10）。服务自身只监听明文 HTTP，TLS 由
-反向代理终止；反向代理后必须设置 `FILEWAREHOUSE_PUBLIC_BASE_URL`，否则预签名链接的域名来自请求 Host。
+反向代理终止；反向代理后必须设置 `FILEHOUSE_PUBLIC_BASE_URL`，否则预签名链接的域名来自请求 Host。
 
 ## 2. 鉴权与授权
 
@@ -60,8 +60,8 @@ token 只证明身份，不携带权限；权限永远由 teamusers 的权限数
 | 校验项 | 行为 | 来源 |
 | --- | --- | --- |
 | `alg` | 使用 teamusers JWKS 中对应 `kid` 的公钥验签（teamusers 使用 Ed25519 密钥），拒绝无法验证的 token | SDK Verifier + `internal/iamauth/authorizer.go` |
-| `iss` | 必须等于 `FILEWAREHOUSE_TEAMUSERS_ISSUER`；为空时用 SDK 默认值（默认 issuer 为 `teamusers`，启动日志给 warning） | `Options.Issuer` |
-| `aud` | 必须等于 `FILEWAREHOUSE_TEAMUSERS_AUDIENCE`；为空时用 teamusers SDK 默认值 | `Options.Audience` |
+| `iss` | 必须等于 `FILEHOUSE_TEAMUSERS_ISSUER`；为空时用 SDK 默认值（默认 issuer 为 `teamusers`，启动日志给 warning） | `Options.Issuer` |
+| `aud` | 必须等于 `FILEHOUSE_TEAMUSERS_AUDIENCE`；为空时用 teamusers SDK 默认值 | `Options.Audience` |
 | `exp` | 已过期即验证失败，返回 `401 invalid_token` | SDK Verifier |
 | `sub` | 作为授权主体（`claims.Subject`）；为空时所有决策直接拒绝 | `Authorizer.Decide` |
 | `kind` | Verifier 只接受 `user` 与 `service`；记录用量/配额时缺省按 `user` 处理 | `internal/iamauth`、`subjectKind` |
@@ -71,29 +71,29 @@ token 只证明身份，不携带权限；权限永远由 teamusers 的权限数
 
 ### 2.2 权限目录
 
-权限键格式 `filewarehouse:<action>:<scope>`，`!` 前缀表示 deny，`*` 匹配恰好一个段。`register-permissions`
-把下表幂等 upsert 到 teamusers（`POST {baseURL}/permissions/`，需要管理员令牌；注册方标识 `filewarehouse`）。
+权限键格式 `filehouse:<action>:<scope>`，`!` 前缀表示 deny，`*` 匹配恰好一个段。`register-permissions`
+把下表幂等 upsert 到 teamusers（`POST {baseURL}/permissions/`，需要管理员令牌；注册方标识 `filehouse`）。
 键与 `internal/iamauth/catalog.go` 逐条对应：
 
 | 权限键 | 含义 |
 | --- | --- |
-| `filewarehouse:read:own` | 读取主体自己拥有的对象、列举自己拥有的桶 |
-| `filewarehouse:read:team` | 读取主体所属团队拥有的桶与对象 |
-| `filewarehouse:read:any` | 读取平台上任意桶与对象 |
-| `filewarehouse:write:own` | 在主体自己拥有的桶中上传、覆盖、建桶、管理分片上传 |
-| `filewarehouse:write:team` | 在主体所属团队的桶中上传与管理分片上传 |
-| `filewarehouse:write:any` | 在任意桶中上传与管理分片上传 |
-| `filewarehouse:delete:own` | 删除主体自己拥有的对象与空桶 |
-| `filewarehouse:delete:team` | 删除主体所属团队的对象与空桶 |
-| `filewarehouse:delete:any` | 删除平台上任意对象与空桶 |
-| `filewarehouse:share:own` | 为自己拥有的桶中的对象签发预签名链接 |
-| `filewarehouse:share:team` | 为主体所属团队的桶中的对象签发预签名链接 |
-| `filewarehouse:share:any` | 为平台上任意对象签发预签名链接 |
-| `filewarehouse:manage:any` | 管理面：配额、平台统计、垃圾回收 |
+| `filehouse:read:own` | 读取主体自己拥有的对象、列举自己拥有的桶 |
+| `filehouse:read:team` | 读取主体所属团队拥有的桶与对象 |
+| `filehouse:read:any` | 读取平台上任意桶与对象 |
+| `filehouse:write:own` | 在主体自己拥有的桶中上传、覆盖、建桶、管理分片上传 |
+| `filehouse:write:team` | 在主体所属团队的桶中上传与管理分片上传 |
+| `filehouse:write:any` | 在任意桶中上传与管理分片上传 |
+| `filehouse:delete:own` | 删除主体自己拥有的对象与空桶 |
+| `filehouse:delete:team` | 删除主体所属团队的对象与空桶 |
+| `filehouse:delete:any` | 删除平台上任意对象与空桶 |
+| `filehouse:share:own` | 为自己拥有的桶中的对象签发预签名链接 |
+| `filehouse:share:team` | 为主体所属团队的桶中的对象签发预签名链接 |
+| `filehouse:share:any` | 为平台上任意对象签发预签名链接 |
+| `filehouse:manage:any` | 管理面：配额、平台统计、垃圾回收 |
 
 ### 2.3 Scope 级联与显式 deny
 
-`cascadeKeys` 依次生成：① `filewarehouse:<verb>:any`（总是尝试）；② `...:team`（仅当资源有 `TeamID`）；
+`cascadeKeys` 依次生成：① `filehouse:<verb>:any`（总是尝试）；② `...:team`（仅当资源有 `TeamID`）；
 ③ `...:own`（仅当 `OwnerID == subject`）。首个 allow 通过；遇显式 deny（SDK reason `permission denied`）
 立即终止并拒绝；级联耗尽同样拒绝。
 
@@ -109,16 +109,16 @@ token 只证明身份，不携带权限；权限永远由 teamusers 的权限数
 
 服务调用 teamusers 的权限接口需要服务身份：
 
-- **client-credentials（推荐）**：配置 `FILEWAREHOUSE_TEAMUSERS_CLIENT_ID` + `..._CLIENT_SECRET`，通过
+- **client-credentials（推荐）**：配置 `FILEHOUSE_TEAMUSERS_CLIENT_ID` + `..._CLIENT_SECRET`，通过
   `POST /auth/client-credentials` 换取短期服务令牌；缓存到声称有效期的 80%，并发调用共享一次刷新，冷启动
   只发一次请求。失败以 `ErrServiceAuth` 上报，错误链不含 client secret 或 token。
-- **静态服务令牌**：`FILEWAREHOUSE_TEAMUSERS_SERVICE_TOKEN`。两者同时存在时静态令牌优先，`status` 与启动
+- **静态服务令牌**：`FILEHOUSE_TEAMUSERS_SERVICE_TOKEN`。两者同时存在时静态令牌优先，`status` 与启动
   日志给出 warning；静态令牌不会轮换，仅建议临时使用。
 - 两者都缺省：权限缓存填充、授权回退与权限注册都会失败（fail-closed），启动报 warning。
 
 ### 2.6 NATS 失效事件（可选）
 
-用 `-tags nats` 构建并配置 `FILEWAREHOUSE_TEAMUSERS_NATS_URL` 后，服务订阅 teamusers 的权限失效与 JWKS 密钥轮换事件，主动清理权限/密钥缓存。未带 tag 构建时订阅降级为 warning，缓存按自身 TTL 过期，功能不受影响，只是失效延迟更长。
+用 `-tags nats` 构建并配置 `FILEHOUSE_TEAMUSERS_NATS_URL` 后，服务订阅 teamusers 的权限失效与 JWKS 密钥轮换事件，主动清理权限/密钥缓存。未带 tag 构建时订阅降级为 warning，缓存按自身 TTL 过期，功能不受影响，只是失效延迟更长。
 
 ## 3. 数据模型
 
@@ -160,7 +160,7 @@ bigint DEFAULT 0（0 = 无限）、`updated_at`。
   refcount +1，旧 hash 的 refcount -1（`GREATEST(...,0)`）；内容未变时只刷新 `last_seen_at` 与对象行。
 - **配额在提交前校验**：桶配额在锁定的桶行上投影 `used + delta` 与 `quota_bytes`/`quota_objects` 比较，超出
   即 `ErrQuotaExceeded`（HTTP `413 quota_exceeded`），事务回滚、计数器保持原值；主体配额（user/team）先按主体
-  取 PostgreSQL advisory lock（`filewarehouse:quota:user:<id>` / `:team:<id>`），再对该主体所有桶的 `used_*`
+  取 PostgreSQL advisory lock（`filehouse:quota:user:<id>` / `:team:<id>`），再对该主体所有桶的 `used_*`
   求和后投影，并发写者不会集体超限；`0` 表示该维度不设限。
 - **删除对象**：锁桶、锁对象行，删行、refcount -1、计数器减到不小于 0；物理文件不动。
 - **删除桶必须为空**：锁桶后统计 objects，非空返回 `ErrBucketNotEmpty`（`409 bucket_not_empty`），不做隐式
@@ -174,7 +174,7 @@ bigint DEFAULT 0（0 = 无限）、`updated_at`。
 ### 4.1 目录布局
 
 ```text
-<FILEWAREHOUSE_BLOB_DIR>/
+<FILEHOUSE_BLOB_DIR>/
 ├── blobs/<aa>/<bb>/<sha256>      # 内容寻址，aa/bb 为 hash 前 2/2 个 hex 字符
 ├── tmp/incoming-*                # 直传临时文件，fsync 后 rename 落盘
 ├── tmp/assemble-*                # 分片拼装临时文件
@@ -185,7 +185,7 @@ bigint DEFAULT 0（0 = 无限）、`updated_at`。
 
 ### 4.2 写入与去重
 
-1. 请求体流式写入 `tmp/` 临时文件并同时计算 SHA-256；客户端提供 `X-Filewarehouse-SHA256` 时比对，不匹配返回
+1. 请求体流式写入 `tmp/` 临时文件并同时计算 SHA-256；客户端提供 `X-Filehouse-SHA256` 时比对，不匹配返回
    `422 checksum_mismatch`（临时文件删除）。
 2. `fsync` 后 rename 到 `blobs/aa/bb/<hash>`；目标已存在则删除临时文件（去重命中）。
 3. 提交对象元数据：新 hash 的 `blobs` 行 refcount +1（不存在则插入），写 objects 行并同步桶计数器。引用相同
@@ -202,12 +202,12 @@ bigint DEFAULT 0（0 = 无限）、`updated_at`。
 
 ## 5. 垃圾回收
 
-reaper 启动后立即执行一轮，之后每 `FILEWAREHOUSE_GC_INTERVAL` 一轮；`POST /api/v1/admin/gc` 可手动触发。
+reaper 启动后立即执行一轮，之后每 `FILEHOUSE_GC_INTERVAL` 一轮；`POST /api/v1/admin/gc` 可手动触发。
 单轮按固定顺序执行四步，某步失败会记录 `errors` 计数并继续其余步骤。
 
 ### 5.1 零引用 blob
 
-扫描 `refcount = 0 AND last_seen_at < now - FILEWAREHOUSE_GC_GRACE`，每批 500、单轮最多 20000 个。处理顺序是
+扫描 `refcount = 0 AND last_seen_at < now - FILEHOUSE_GC_GRACE`，每批 500、单轮最多 20000 个。处理顺序是
 **先删文件、再删带 `refcount = 0` 守卫的行**：崩溃只会留下零引用行，下一轮对账，不会产生孤儿文件；守卫删除在
 并发上传恰好复活该 blob 时不会命中。仅当行删除成功才计入 `blobs_deleted`/`bytes_deleted`。
 
@@ -231,7 +231,7 @@ reaper 启动后立即执行一轮，之后每 `FILEWAREHOUSE_GC_INTERVAL` 一�
 ### 5.5 幂等记录清理
 
 删除 `created_at < now - 24h` 的 `idempotency` 行，计入 `idempotency_deleted`。这里的 24h 是 reaper 内固定
-保留期，与 `FILEWAREHOUSE_IDEMPOTENCY_TTL`（HTTP 重放窗口）是两个独立参数。
+保留期，与 `FILEHOUSE_IDEMPOTENCY_TTL`（HTTP 重放窗口）是两个独立参数。
 
 ### 5.6 并发删除竞态与恢复
 
@@ -269,8 +269,8 @@ reaper 启动后立即执行一轮，之后每 `FILEWAREHOUSE_GC_INTERVAL` 一�
   `SHA-256(raw Authorization)`，无认证头时回退客户端 IP；请求体 ≤64 KiB 才参与。同 key 同 body 重放原响应并
   带 `Idempotency-Replayed: true`；同 key 不同 body → `422 idempotency_conflict`；仍在执行 →
   `409 idempotency_in_progress`。只有 200–428 且响应体 ≤64 KiB 的响应会被保留，其余记为 dead（可重新占用）。
-- **校验与元数据头**：请求可带 `X-Filewarehouse-SHA256`（裸小写 hex），不匹配 `422 checksum_mismatch`；响应带
-  `ETag: "<sha256>"` 与裸 `X-Filewarehouse-SHA256`；自定义元数据用 `X-Filewarehouse-Meta-<name>`（名称 ≤64
+- **校验与元数据头**：请求可带 `X-Filehouse-SHA256`（裸小写 hex），不匹配 `422 checksum_mismatch`；响应带
+  `ETag: "<sha256>"` 与裸 `X-Filehouse-SHA256`；自定义元数据用 `X-Filehouse-Meta-<name>`（名称 ≤64
   字符、HTTP token 字符集，值与名称合计 ≤2 KiB），GET/HEAD 原样回显；`?download=1` 时附加
   `Content-Disposition: attachment`（文件名为 key 的 basename）。
 - **Range / 条件请求**：GET/HEAD 对象由 `http.ServeContent` 提供标准语义（`Range`、`If-*`、`206`/`304`/`416`，
@@ -320,10 +320,10 @@ reaper 启动后立即执行一轮，之后每 `FILEWAREHOUSE_GC_INTERVAL` 一�
 用自己的游标翻页；其余情况按单一来源过滤。被拒绝的行不会出现在页里。
 
 **对象上传** `PUT /api/v1/buckets/{bucket}/objects/{key...}`：直接覆盖同 key；请求体上限
-`FILEWAREHOUSE_OBJECT_MAX_BYTES`，已知 `Content-Length` 超限立即 `413 payload_too_large`。成功 `201` 返回
-对象 JSON，并带 `ETag`/`X-Filewarehouse-SHA256` 响应头。
+`FILEHOUSE_OBJECT_MAX_BYTES`，已知 `Content-Length` 超限立即 `413 payload_too_large`。成功 `201` 返回
+对象 JSON，并带 `ETag`/`X-Filehouse-SHA256` 响应头。
 
-**对象下载** `GET|HEAD`：响应头含 `ETag`、`X-Filewarehouse-SHA256`、`Content-Type` 与全部元数据头；支持
+**对象下载** `GET|HEAD`：响应头含 `ETag`、`X-Filehouse-SHA256`、`Content-Type` 与全部元数据头；支持
 Range 与条件请求。
 
 **分片上传**：
@@ -331,7 +331,7 @@ Range 与条件请求。
 1. `POST /api/v1/buckets/{bucket}/uploads` body `{"key","content_type","metadata","size"?}` →
    `201 {"upload_id","expires_at","part_count"}`；`size` 是可选的声明总大小，用于权限判定。
 2. `PUT .../uploads/{uploadID}/parts/{partNo}`：body 为分片字节，partNo ≥ 1，单分片上限
-   `FILEWAREHOUSE_PART_MAX_BYTES`；同号重传覆盖。成功 `200` 返回 `{upload_id, part_no, size, sha256,
+   `FILEHOUSE_PART_MAX_BYTES`；同号重传覆盖。成功 `200` 返回 `{upload_id, part_no, size, sha256,
    created_at}`。
 3. `GET .../uploads/{uploadID}`：返回 upload 详情与 `parts` 列表。
 4. `POST .../uploads/{uploadID}/complete` body `{"parts":[{"part_no":1,"sha256":"..."}]}`：列表本身非法
@@ -345,17 +345,17 @@ Range 与条件请求。
 **预签名签发** `POST /api/v1/presign`：body
 `{"bucket","key","method","ttl_seconds","content_type","max_bytes"}`。
 `method` 只接受 `GET`/`HEAD`（需 share + read）或 `PUT`（需 share + write），两者在同一桶资源上下文判定；缺省
-TTL 取 `FILEWAREHOUSE_PRESIGN_DEFAULT_TTL`，超过 `FILEWAREHOUSE_PRESIGN_MAX_TTL` 直接 `400 invalid_request`。
+TTL 取 `FILEHOUSE_PRESIGN_DEFAULT_TTL`，超过 `FILEHOUSE_PRESIGN_MAX_TTL` 直接 `400 invalid_request`。
 `content_type`/`max_bytes` 只对 PUT 有意义：content type 写入签名并在兑换时回写为请求头（拒绝控制字符或超长
 值），`max_bytes` 钳制到对象大小上限。成功 `200` 返回 `{"url","method","bucket","key","expires_at"}`；URL
-origin 优先取 `FILEWAREHOUSE_PUBLIC_BASE_URL`，未配置时从请求推导（需保证反代不改写 Host）。
+origin 优先取 `FILEHOUSE_PUBLIC_BASE_URL`，未配置时从请求推导（需保证反代不改写 Host）。
 
 **预签名兑换** `GET|HEAD|PUT /presign/{bucket}/{key...}?sig=`：先验签，再按签名内主体的 `perm_ver` 重查当前
 权限，然后对当前资源重跑级联。本地权限缓存未命中/过期（默认 2 分钟 TTL）或收到 NATS 失效事件后，`perm_ver`
 不一致即拒绝；缓存条目仍在有效期内时，撤权/变更最长约 2 分钟内仍可能放行。GET 的 token 也允许 HEAD，PUT 只
 接受 PUT token。签名无效/不匹配方法或对象 → `403 presign_invalid`；过期 → `410 presign_expired`；权限已变更
 → `403 insufficient_permissions`。PUT 兑换与已认证 PUT 共用同一条上传路径（去重、配额、
-`X-Filewarehouse-SHA256`、元数据头全支持）。
+`X-Filehouse-SHA256`、元数据头全支持）。
 
 **自服务**：`GET /api/v1/usage` 返回
 `{"subject":{"id","kind"},"used_bytes","used_objects","quota_bytes","quota_objects","buckets":[...]}`，`buckets`
@@ -389,7 +389,7 @@ limit=&cursor=` 按 `(subject_kind, subject_id)` 排序；`PUT /api/v1/admin/quo
 | 410 | `presign_expired` | 预签名链接已过期 |
 | 413 | `payload_too_large` | JSON 体 >1 MiB、对象/分片超限、预签名 token 的 `max_bytes` 超限 |
 | 413 | `quota_exceeded` | 桶配额或主体配额将超限（事务回滚，计数器不变） |
-| 422 | `checksum_mismatch` | 请求头 `X-Filewarehouse-SHA256` 与实际内容不符 |
+| 422 | `checksum_mismatch` | 请求头 `X-Filehouse-SHA256` 与实际内容不符 |
 | 422 | `part_mismatch` | complete 提交的分片列表与已存分片不一致，或拼装时缺分片 |
 | 422 | `idempotency_conflict` | 同 Idempotency-Key 携带了不同请求体 |
 | 500 | `service_unavailable` | 内部错误（响应序列化、预签名签发/URL 组装失败） |
@@ -402,8 +402,8 @@ limit=&cursor=` 按 `(subject_kind, subject_id)` 排序；`PUT /api/v1/admin/quo
 
 ### 7.1 优先级
 
-**CLI flag > `FILEWAREHOUSE_*` 环境变量 > Nekostick `HOST`/`PORT` > 内置默认值**。`run -h` 列出全部 flag；
-`filewarehouse status` 打印生效配置（DSN 密码、服务令牌、client secret 一律打码）。最小可用配置 = DSN +
+**CLI flag > `FILEHOUSE_*` 环境变量 > Nekostick `HOST`/`PORT` > 内置默认值**。`run -h` 列出全部 flag；
+`filehouse status` 打印生效配置（DSN 密码、服务令牌、client secret 一律打码）。最小可用配置 = DSN +
 teamusers base URL + （静态服务令牌或 client id/secret 二者之一）。启动前执行 `Validate()`，不满足即拒绝启动
 （退出码 2）。
 
@@ -411,37 +411,37 @@ teamusers base URL + （静态服务令牌或 client id/secret 二者之一）�
 
 | 变量 | 默认值 | 含义 | 生产建议 |
 | --- | --- | --- | --- |
-| `FILEWAREHOUSE_DSN` | 无（必填） | PostgreSQL 连接串（URL 或 key/value） | 独立库与最小权限角色；密码走密钥管理 |
-| `FILEWAREHOUSE_ADDR` | `127.0.0.1`（`HOST` 兜底） | 监听地址 | 只在反代后或容器网内使用；外部直达才用 `0.0.0.0` |
-| `FILEWAREHOUSE_PORT` | `8080`（`PORT` 兜底） | 监听端口；`0` 选空闲端口 | 与编排端口一致；`0` 仅用于测试 |
-| `FILEWAREHOUSE_BLOB_DIR` | `data` | `blobs/`、`tmp/`、`uploads/` 根目录 | 本地持久卷；**一个可写目录一个副本**；容量单独规划 |
-| `FILEWAREHOUSE_KEY_DIR` | `data/keys` | 预签名 HMAC 密钥目录（`presign-hmac.key`，0600，32 字节） | 与 blob 目录同级备份；密钥丢失会让未过期链接全部失效 |
-| `FILEWAREHOUSE_LOG_LEVEL` | `info` | `debug`/`info`/`warn`/`error` | 默认 `info`；排查时临时 `debug` |
-| `FILEWAREHOUSE_NODE_ID` | 主机名 | 日志中的节点标识 | 多实例显式设置，便于日志聚合 |
-| `FILEWAREHOUSE_PUBLIC_BASE_URL` | 空（从请求推导） | 预签名链接的绝对 origin | 反代后**必设**，如 `https://files.example.com`；不得带 query/fragment |
-| `FILEWAREHOUSE_TRUSTED_PROXIES` | 空（仅 loopback 可信） | 允许设置 `X-Forwarded-For` 的 CIDR/IP 列表 | 填入口网段；影响日志 client_ip 与幂等作用域回退 |
-| `FILEWAREHOUSE_TEAMUSERS_BASE_URL` | 无（必填） | teamusers 基址（JWKS 在 `/.well-known/jwks.json`） | 指向内网/集群地址，减少公网依赖 |
-| `FILEWAREHOUSE_TEAMUSERS_ISSUER` | 空（SDK 默认，issuer 默认 `teamusers`） | 期望的 JWT `iss` | 与 teamusers 部署一致；不一致会全体 401 |
-| `FILEWAREHOUSE_TEAMUSERS_AUDIENCE` | 空（SDK 默认） | 期望的 JWT `aud` | 同上 |
-| `FILEWAREHOUSE_TEAMUSERS_SERVICE_TOKEN` | 空 | 静态服务令牌 | 仅临时使用；不会轮换，优先 client credentials |
-| `FILEWAREHOUSE_TEAMUSERS_CLIENT_ID` | 空 | OAuth client id | 与 secret 成对配置 |
-| `FILEWAREHOUSE_TEAMUSERS_CLIENT_SECRET` | 空 | OAuth client secret | 走密钥管理，不写进镜像 |
-| `FILEWAREHOUSE_TEAMUSERS_NATS_URL` | 空 | 权限/密钥失效事件的 NATS 端点 | 需 `-tags nats` 构建；未启用则依赖缓存 TTL |
-| `FILEWAREHOUSE_TEAMUSERS_TIMEOUT` | `5s` | teamusers HTTP 调用超时 | 过大拖慢 fail-closed 返回，网络抖动大时适度上调 |
-| `FILEWAREHOUSE_TEAMUSERS_ADMIN_TOKEN` | 空 | 仅供 `register-permissions` 使用的管理员令牌 | 只在首次/升级注册时提供，不随服务长驻 |
-| `FILEWAREHOUSE_PRESIGN_DEFAULT_TTL` | `15m` | 请求省略 `ttl_seconds` 时的有效期 | 按分享场景收敛；必须 ≤ max TTL |
-| `FILEWAREHOUSE_PRESIGN_MAX_TTL` | `24h` | 预签名有效期硬上限 | 越短越安全；撤权后最长约 2 分钟（缓存 TTL）内链接可能仍可用 |
-| `FILEWAREHOUSE_OBJECT_MAX_BYTES` | `5368709120`（5 GiB） | 单对象大小上限 | 同步调整反代/客户端上限；大对象用分片 |
-| `FILEWAREHOUSE_PART_MAX_BYTES` | `268435456`（256 MiB） | 单分片大小上限 | 一般无需修改 |
-| `FILEWAREHOUSE_UPLOAD_TTL` | `24h` | 分片上传暂存有效期 | 按客户端最长断点续传时长设置 |
-| `FILEWAREHOUSE_BUCKET_DEFAULT_QUOTA_BYTES` | `0`（不限） | 新建桶默认字节配额 | 建议设非零，防止单桶吃满磁盘 |
-| `FILEWAREHOUSE_BUCKET_DEFAULT_QUOTA_OBJECTS` | `0`（不限） | 新建桶默认对象数配额 | 同上 |
-| `FILEWAREHOUSE_GC_INTERVAL` | `15m` | reaper 周期 | 大目录可放宽；磁盘紧张时缩短 |
-| `FILEWAREHOUSE_GC_GRACE` | `1h` | 零引用 blob / 孤儿文件宽限期 | 必须显著大于最长上传耗时；调小加快回收但增加在途风险 |
-| `FILEWAREHOUSE_IDEMPOTENCY_TTL` | `24h` | `Idempotency-Key` 重放窗口 | 覆盖客户端重试窗口即可；reaper 另有固定 24h 清理 |
+| `FILEHOUSE_DSN` | 无（必填） | PostgreSQL 连接串（URL 或 key/value） | 独立库与最小权限角色；密码走密钥管理 |
+| `FILEHOUSE_ADDR` | `127.0.0.1`（`HOST` 兜底） | 监听地址 | 只在反代后或容器网内使用；外部直达才用 `0.0.0.0` |
+| `FILEHOUSE_PORT` | `8080`（`PORT` 兜底） | 监听端口；`0` 选空闲端口 | 与编排端口一致；`0` 仅用于测试 |
+| `FILEHOUSE_BLOB_DIR` | `data` | `blobs/`、`tmp/`、`uploads/` 根目录 | 本地持久卷；**一个可写目录一个副本**；容量单独规划 |
+| `FILEHOUSE_KEY_DIR` | `data/keys` | 预签名 HMAC 密钥目录（`presign-hmac.key`，0600，32 字节） | 与 blob 目录同级备份；密钥丢失会让未过期链接全部失效 |
+| `FILEHOUSE_LOG_LEVEL` | `info` | `debug`/`info`/`warn`/`error` | 默认 `info`；排查时临时 `debug` |
+| `FILEHOUSE_NODE_ID` | 主机名 | 日志中的节点标识 | 多实例显式设置，便于日志聚合 |
+| `FILEHOUSE_PUBLIC_BASE_URL` | 空（从请求推导） | 预签名链接的绝对 origin | 反代后**必设**，如 `https://files.example.com`；不得带 query/fragment |
+| `FILEHOUSE_TRUSTED_PROXIES` | 空（仅 loopback 可信） | 允许设置 `X-Forwarded-For` 的 CIDR/IP 列表 | 填入口网段；影响日志 client_ip 与幂等作用域回退 |
+| `FILEHOUSE_TEAMUSERS_BASE_URL` | 无（必填） | teamusers 基址（JWKS 在 `/.well-known/jwks.json`） | 指向内网/集群地址，减少公网依赖 |
+| `FILEHOUSE_TEAMUSERS_ISSUER` | 空（SDK 默认，issuer 默认 `teamusers`） | 期望的 JWT `iss` | 与 teamusers 部署一致；不一致会全体 401 |
+| `FILEHOUSE_TEAMUSERS_AUDIENCE` | 空（SDK 默认） | 期望的 JWT `aud` | 同上 |
+| `FILEHOUSE_TEAMUSERS_SERVICE_TOKEN` | 空 | 静态服务令牌 | 仅临时使用；不会轮换，优先 client credentials |
+| `FILEHOUSE_TEAMUSERS_CLIENT_ID` | 空 | OAuth client id | 与 secret 成对配置 |
+| `FILEHOUSE_TEAMUSERS_CLIENT_SECRET` | 空 | OAuth client secret | 走密钥管理，不写进镜像 |
+| `FILEHOUSE_TEAMUSERS_NATS_URL` | 空 | 权限/密钥失效事件的 NATS 端点 | 需 `-tags nats` 构建；未启用则依赖缓存 TTL |
+| `FILEHOUSE_TEAMUSERS_TIMEOUT` | `5s` | teamusers HTTP 调用超时 | 过大拖慢 fail-closed 返回，网络抖动大时适度上调 |
+| `FILEHOUSE_TEAMUSERS_ADMIN_TOKEN` | 空 | 仅供 `register-permissions` 使用的管理员令牌 | 只在首次/升级注册时提供，不随服务长驻 |
+| `FILEHOUSE_PRESIGN_DEFAULT_TTL` | `15m` | 请求省略 `ttl_seconds` 时的有效期 | 按分享场景收敛；必须 ≤ max TTL |
+| `FILEHOUSE_PRESIGN_MAX_TTL` | `24h` | 预签名有效期硬上限 | 越短越安全；撤权后最长约 2 分钟（缓存 TTL）内链接可能仍可用 |
+| `FILEHOUSE_OBJECT_MAX_BYTES` | `5368709120`（5 GiB） | 单对象大小上限 | 同步调整反代/客户端上限；大对象用分片 |
+| `FILEHOUSE_PART_MAX_BYTES` | `268435456`（256 MiB） | 单分片大小上限 | 一般无需修改 |
+| `FILEHOUSE_UPLOAD_TTL` | `24h` | 分片上传暂存有效期 | 按客户端最长断点续传时长设置 |
+| `FILEHOUSE_BUCKET_DEFAULT_QUOTA_BYTES` | `0`（不限） | 新建桶默认字节配额 | 建议设非零，防止单桶吃满磁盘 |
+| `FILEHOUSE_BUCKET_DEFAULT_QUOTA_OBJECTS` | `0`（不限） | 新建桶默认对象数配额 | 同上 |
+| `FILEHOUSE_GC_INTERVAL` | `15m` | reaper 周期 | 大目录可放宽；磁盘紧张时缩短 |
+| `FILEHOUSE_GC_GRACE` | `1h` | 零引用 blob / 孤儿文件宽限期 | 必须显著大于最长上传耗时；调小加快回收但增加在途风险 |
+| `FILEHOUSE_IDEMPOTENCY_TTL` | `24h` | `Idempotency-Key` 重放窗口 | 覆盖客户端重试窗口即可；reaper 另有固定 24h 清理 |
 
-其他环境变量：`HOST`/`PORT` 仅在对应 `FILEWAREHOUSE_*` 未设置时兜底；`FILEWAREHOUSE_TEST_PG` 仅用于集成测试
-（§9）；`FILEWAREHOUSE_TEAMUSERS_ADMIN_TOKEN` 之外的所有变量都可用同名小写 flag 覆盖（如 `-dsn`、`-port`、
+其他环境变量：`HOST`/`PORT` 仅在对应 `FILEHOUSE_*` 未设置时兜底；`FILEHOUSE_TEST_PG` 仅用于集成测试
+（§9）；`FILEHOUSE_TEAMUSERS_ADMIN_TOKEN` 之外的所有变量都可用同名小写 flag 覆盖（如 `-dsn`、`-port`、
 `-teamusers-client-id`、`-gc-grace`、`-trusted-proxies`）。
 
 ## 8. 运维手册
@@ -466,7 +466,7 @@ teamusers base URL + （静态服务令牌或 client id/secret 二者之一）�
 ### 8.3 备份与一致性
 
 PostgreSQL 行与 blob 目录是同一份状态的两半，**必须一起备份/恢复**，只恢复其一会得到无法下载的对象。建议先取
-数据库快照再备份 blob 目录（或停机后一起备份），并同时备份 `FILEWAREHOUSE_KEY_DIR`（否则所有未过期预签名链接
+数据库快照再备份 blob 目录（或停机后一起备份），并同时备份 `FILEHOUSE_KEY_DIR`（否则所有未过期预签名链接
 失效）。恢复后用 `GET /api/v1/admin/stats` 对比 `logical_bytes`/`blobs`/`physical_blobs` 观察行与文件是否对齐，
 零引用与孤儿由 GC 后续对账。
 
@@ -500,7 +500,7 @@ PostgreSQL 行与 blob 目录是同一份状态的两半，**必须一起备份/
 | 403 `insufficient_permissions` | 主体缺少对应权限键 | 看响应 `reason` 中的尝试键，在 teamusers 侧补授权 |
 | 403 `presign_invalid` | 链接被截断/篡改、方法或对象不匹配 | 重新签发；确认 `sig` 查询参数完整 |
 | 410 `presign_expired` | 链接过期 | 重新签发或调大 TTL 上限 |
-| 预签名链接指向内网地址 | `PUBLIC_BASE_URL` 未配置且反代改写 Host | 设置 `FILEWAREHOUSE_PUBLIC_BASE_URL` |
+| 预签名链接指向内网地址 | `PUBLIC_BASE_URL` 未配置且反代改写 Host | 设置 `FILEHOUSE_PUBLIC_BASE_URL` |
 | 413 `quota_exceeded` | 桶/主体配额已满 | 提高配额或删除对象；删除后逻辑用量立即释放 |
 | 422 `checksum_mismatch`/`part_mismatch` | 客户端摘要错误 / 分片集合不一致 | 核对分片编号与 sha256 后重试 |
 | 上传失败后磁盘不降 | 内容仍在 grace 窗口内或为孤儿待扫 | 看 stats 与 GC 日志；必要时缩短 grace 或手动触发 GC |
@@ -514,11 +514,11 @@ PostgreSQL 行与 blob 目录是同一份状态的两半，**必须一起备份/
 go test ./...
 
 # 完整 HTTP 级集成测试（需要可清空的 PostgreSQL 库）
-FILEWAREHOUSE_TEST_PG='postgres://postgres:postgres@127.0.0.1:5432/filewarehouse_test?sslmode=disable' \
+FILEHOUSE_TEST_PG='postgres://postgres:postgres@127.0.0.1:5432/filehouse_test?sslmode=disable' \
   go test ./test/... -count=1
 ```
 
-`FILEWAREHOUSE_TEST_PG` 门控 `test/`；未设置时整个包跳过，`go test ./...` 在没有 PostgreSQL 的机器上保持
+`FILEHOUSE_TEST_PG` 门控 `test/`；未设置时整个包跳过，`go test ./...` 在没有 PostgreSQL 的机器上保持
 绿色。**该库会被清空**：每个用例执行前 truncate 所有表，并使用临时 blob 目录与临时预签名密钥，绝不要指向
 生产库。`internal/iamfixture` 提供真实签名的假 teamusers（Ed25519 JWKS/JWT、权限缓存、deny 与条件判定、
 client-credentials、权限注册），测试断言的是可观察 HTTP 行为而不是内部接线。集成用例覆盖：未认证拒绝、无关
@@ -536,7 +536,7 @@ client-credentials、权限注册），测试断言的是可观察 HTTP 行为�
 - **GC 是渐进式对账**：零引用 blob 需等 grace 结束，孤儿扫描每轮最多 5000 个文件并按游标推进，超大目录或持续
   写入时回收会滞后；磁盘占用可能长期高于逻辑用量。
 - **幂等重放有边界**：仅 POST、key ≤1024 字节、请求体 ≤64 KiB；只有 200–428 且响应 ≤64 KiB 会被重放，其余
-  响应按 dead 处理（可重新执行）。reaper 对幂等记录的清理保留期固定 24h，与 `FILEWAREHOUSE_IDEMPOTENCY_TTL`
+  响应按 dead 处理（可重新执行）。reaper 对幂等记录的清理保留期固定 24h，与 `FILEHOUSE_IDEMPOTENCY_TTL`
   无关。
 - **预签名与权限版本绑定**：兑换时按 `perm_ver` 重查权限——本地缓存未命中/过期（默认 2 分钟）或收到 NATS 失效
   事件后，撤权/变更即被拒；缓存命中期间最长约 2 分钟内仍可能放行。签名密钥丢失或更换会让所有未过期链接失效。

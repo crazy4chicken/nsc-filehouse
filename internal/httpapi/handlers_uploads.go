@@ -12,10 +12,10 @@ import (
 
 	iam "github.com/crazy4chicken/nsc-teamusers/sdk/go"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/blob"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/config"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/blob"
+	"github.com/crazy4chicken/nsc-filehouse/internal/config"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 type initiateUploadRequest struct {

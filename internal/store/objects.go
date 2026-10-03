@@ -80,7 +80,7 @@ func (s *Store) PutObject(ctx context.Context, req PutObjectRequest) (Object, er
 		// concurrent writers of the same subject for the rest of the
 		// transaction, so the projection cannot be overtaken.
 		if !req.OwnerQuota.Unlimited() {
-			if err := lockQuotaSubject(ctx, tx, "filewarehouse:quota:user:"+req.OwnerID); err != nil {
+			if err := lockQuotaSubject(ctx, tx, "filehouse:quota:user:"+req.OwnerID); err != nil {
 				return err
 			}
 			ownerBytes, ownerObjects, err := quotaSubjectUsage(ctx, tx,
@@ -104,7 +104,7 @@ func (s *Store) PutObject(ctx context.Context, req PutObjectRequest) (Object, er
 			}
 		}
 		if !req.TeamQuota.Unlimited() && bucketTeamID != "" {
-			if err := lockQuotaSubject(ctx, tx, "filewarehouse:quota:team:"+bucketTeamID); err != nil {
+			if err := lockQuotaSubject(ctx, tx, "filehouse:quota:team:"+bucketTeamID); err != nil {
 				return err
 			}
 			teamBytes, teamObjects, err := quotaSubjectUsage(ctx, tx,

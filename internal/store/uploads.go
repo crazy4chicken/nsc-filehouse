@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/id"
+	"github.com/crazy4chicken/nsc-filehouse/internal/id"
 )
 
 // CreateUpload registers a multipart upload. A missing id is generated.

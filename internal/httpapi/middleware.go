@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/id"
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/store"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/id"
+	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
 // HeaderIdempotencyKey names the client supplied idempotency key.

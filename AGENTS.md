@@ -1,4 +1,4 @@
-# AGENTS.md — working in nsc-filewarehouse
+# AGENTS.md — working in nsc-filehouse
 
 Object storage microservice for the Nekostick fleet: PostgreSQL metadata plus a
 content-addressed local blob directory. Authentication and authorization are
@@ -8,7 +8,7 @@ delegated to the teamusers IAM service through its official Go SDK
 ## Repository layout
 
 ```text
-cmd/filewarehouse/   run/status/doctor/register-permissions, flags, signals
+cmd/filehouse/   run/status/doctor/register-permissions, flags, signals
 internal/config/     env+flag loading, validation, Redacted()
 internal/id/         ULID generation (crypto/rand, no dependencies)
 internal/httpx/      problem+json, request id, cursor, idempotency, client IP
@@ -20,22 +20,22 @@ internal/gc/         reaper: unreferenced and orphan blobs, expired uploads, ide
 internal/httpapi/    chi router: server, middleware, runtime/admin/presign handlers
 internal/iamfixture/ fake teamusers server for tests (JWKS, JWT, checks)
 migrations/          0001_init.sql + embedded goose runner
-test/                integration suite gated by FILEWAREHOUSE_TEST_PG
+test/                integration suite gated by FILEHOUSE_TEST_PG
 ```
 
 ## Commands
 
 ```sh
-go build ./cmd/filewarehouse                 # build
-go run ./cmd/filewarehouse run               # serve (default subcommand)
-go run ./cmd/filewarehouse status            # print redacted configuration
-go run ./cmd/filewarehouse doctor            # check DB, migrations, dirs, IAM
-go run ./cmd/filewarehouse register-permissions   # upsert the permission catalog
-go build -tags nats ./cmd/filewarehouse      # enable NATS invalidation events
+go build ./cmd/filehouse                 # build
+go run ./cmd/filehouse run               # serve (default subcommand)
+go run ./cmd/filehouse status            # print redacted configuration
+go run ./cmd/filehouse doctor            # check DB, migrations, dirs, IAM
+go run ./cmd/filehouse register-permissions   # upsert the permission catalog
+go build -tags nats ./cmd/filehouse      # enable NATS invalidation events
 gofmt -l cmd internal test                   # formatting check
 ```
 
-Configuration precedence is CLI flag > `FILEWAREHOUSE_*` > Nekostick `HOST`/`PORT`
+Configuration precedence is CLI flag > `FILEHOUSE_*` > Nekostick `HOST`/`PORT`
 > built-in default; every variable is documented in `.env.example` and `README.md`.
 Nothing is required beyond a DSN, the teamusers base URL and either a service
 token or a client id/secret pair.
@@ -61,7 +61,7 @@ token or a client id/secret pair.
   GC grace period; orphan files written but never committed to an object (e.g.
   a quota-rejected upload or a crash) are reclaimed the same way, and the grace
   window is what protects in-flight uploads from the sweep. `ETag` and
-  `X-Filewarehouse-SHA256` are the quoted lowercase SHA-256, never an MD5.
+  `X-Filehouse-SHA256` are the quoted lowercase SHA-256, never an MD5.
 - **Blob removal is not atomic with concurrent writers of identical content.**
   Removing a blob (guarded row delete, then file unlink) can interleave with a
   concurrent upload of the same content — specifically a delete racing a failed
@@ -92,8 +92,8 @@ token or a client id/secret pair.
 
 Full table in `README.md` (section "Configuration") and commented defaults in
 `.env.example`. The two knobs that change behavior most: presign lifetimes
-(`FILEWAREHOUSE_PRESIGN_DEFAULT_TTL`/`MAX_TTL`) and the GC grace period
-(`FILEWAREHOUSE_GC_GRACE`).
+(`FILEHOUSE_PRESIGN_DEFAULT_TTL`/`MAX_TTL`) and the GC grace period
+(`FILEHOUSE_GC_GRACE`).
 
 ## Tests
 
@@ -102,11 +102,11 @@ Full table in `README.md` (section "Configuration") and commented defaults in
 go test ./...
 
 # Full integration suite against a disposable PostgreSQL database.
-FILEWAREHOUSE_TEST_PG='postgres://postgres:postgres@127.0.0.1:5432/filewarehouse_test?sslmode=disable' \
+FILEHOUSE_TEST_PG='postgres://postgres:postgres@127.0.0.1:5432/filehouse_test?sslmode=disable' \
   go test ./test/... -count=1
 ```
 
-- `FILEWAREHOUSE_TEST_PG` gates `test/`; leave it unset for `go test ./...` on
+- `FILEHOUSE_TEST_PG` gates `test/`; leave it unset for `go test ./...` on
   machines without PostgreSQL. The suite truncates every table before each test
   and uses temp directories, so it never touches production data.
 - `internal/iamfixture` is the fake teamusers instance used by the suite: real

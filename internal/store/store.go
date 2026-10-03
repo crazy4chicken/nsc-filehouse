@@ -33,7 +33,7 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 	if cfg.ConnConfig.RuntimeParams == nil {
 		cfg.ConnConfig.RuntimeParams = map[string]string{}
 	}
-	cfg.ConnConfig.RuntimeParams["application_name"] = "nsc-filewarehouse"
+	cfg.ConnConfig.RuntimeParams["application_name"] = "nsc-filehouse"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)

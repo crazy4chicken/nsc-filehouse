@@ -11,7 +11,7 @@
 //	POST /permissions/
 //
 // It mints compact EdDSA JWTs with the standard library only and evaluates the
-// subset of the teamusers permission semantics the filewarehouse contract
+// subset of the teamusers permission semantics the filehouse contract
 // relies on: segment-wise matching where "*" matches exactly one segment, an
 // explicit "!" deny that beats every allow, and a small ABAC condition
 // evaluator that fails closed on anything outside its grammar.
@@ -34,13 +34,13 @@ import (
 const (
 	// DefaultClientID and DefaultClientSecret are accepted by
 	// POST /auth/client-credentials unless SetCredentials replaces them.
-	DefaultClientID     = "filewarehouse"
-	DefaultClientSecret = "filewarehouse-test-secret"
+	DefaultClientID     = "filehouse"
+	DefaultClientSecret = "filehouse-test-secret"
 	// DefaultIssuer and DefaultAudience match the SDK defaults.
 	DefaultIssuer   = "teamusers"
 	DefaultAudience = "teamusers"
 	// DefaultKeyID is the kid of the generated Ed25519 key.
-	DefaultKeyID = "filewarehouse-test-key"
+	DefaultKeyID = "filehouse-test-key"
 
 	defaultTokenTTL = 15 * time.Minute
 	// serviceTokenLifetimeSeconds is the expires_in advertised by the
@@ -392,7 +392,7 @@ func (s *Server) handleClientCredentials(w http.ResponseWriter, r *http.Request)
 	}
 	now := s.now()
 	accessToken := s.Issue(Claims{
-		Subject:   "service:filewarehouse",
+		Subject:   "service:filehouse",
 		Kind:      "service",
 		IssuedAt:  now,
 		ExpiresAt: now.Add(serviceTokenLifetimeSeconds * time.Second),

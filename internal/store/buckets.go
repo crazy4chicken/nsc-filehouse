@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/id"
+	"github.com/crazy4chicken/nsc-filehouse/internal/id"
 )
 
 // BucketFilter selects and paginates ListBuckets. Empty fields match everything.

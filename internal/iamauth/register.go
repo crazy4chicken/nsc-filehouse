@@ -15,7 +15,7 @@ import (
 )
 
 // registeredBy identifies this service in the teamusers permission registry.
-const registeredBy = "filewarehouse"
+const registeredBy = "filehouse"
 
 // defaultRegisterTimeout bounds one permission registration request.
 const defaultRegisterTimeout = 10 * time.Second

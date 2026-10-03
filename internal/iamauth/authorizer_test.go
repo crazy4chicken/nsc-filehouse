@@ -16,7 +16,7 @@ import (
 
 	iam "github.com/crazy4chicken/nsc-teamusers/sdk/go"
 
-	"github.com/crazy4chicken/nsc-filewarehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
 )
 
 // allowCall records one cascade step.
@@ -64,7 +64,7 @@ func permissionsOf(calls []allowCall) []string {
 func TestDecideAnyScopeAllowWins(t *testing.T) {
 	var calls []allowCall
 	authorizer := cascadeAuthorizer(map[string]verdict{
-		"filewarehouse:read:any": {allow: true, reason: "permission granted"},
+		"filehouse:read:any": {allow: true, reason: "permission granted"},
 	}, &calls)
 
 	allowed, reason, err := authorizer.Decide(context.Background(), testClaims("u1"), "read", iam.Resource{OwnerID: "u1", TeamID: "t1"})
@@ -74,7 +74,7 @@ func TestDecideAnyScopeAllowWins(t *testing.T) {
 	if !allowed {
 		t.Fatalf("Decide denied: %s", reason)
 	}
-	if got := permissionsOf(calls); len(got) != 1 || got[0] != "filewarehouse:read:any" {
+	if got := permissionsOf(calls); len(got) != 1 || got[0] != "filehouse:read:any" {
 		t.Fatalf("cascade attempted %v, want only the any scope", got)
 	}
 }
@@ -82,9 +82,9 @@ func TestDecideAnyScopeAllowWins(t *testing.T) {
 func TestDecideExplicitDenyIsTerminal(t *testing.T) {
 	var calls []allowCall
 	authorizer := cascadeAuthorizer(map[string]verdict{
-		"filewarehouse:write:any":  {allow: false, reason: policyDeniedReason},
-		"filewarehouse:write:team": {allow: true, reason: "permission granted"},
-		"filewarehouse:write:own":  {allow: true, reason: "permission granted"},
+		"filehouse:write:any":  {allow: false, reason: policyDeniedReason},
+		"filehouse:write:team": {allow: true, reason: "permission granted"},
+		"filehouse:write:own":  {allow: true, reason: "permission granted"},
 	}, &calls)
 
 	allowed, reason, err := authorizer.Decide(context.Background(), testClaims("u1"), "write", iam.Resource{OwnerID: "u1", TeamID: "t1"})
@@ -94,7 +94,7 @@ func TestDecideExplicitDenyIsTerminal(t *testing.T) {
 	if allowed {
 		t.Fatal("Decide allowed a request with an explicit deny")
 	}
-	if !strings.Contains(reason, "filewarehouse:write:any") {
+	if !strings.Contains(reason, "filehouse:write:any") {
 		t.Fatalf("reason %q does not name the denying key", reason)
 	}
 	if got := permissionsOf(calls); len(got) != 1 {
@@ -113,7 +113,7 @@ func TestDecideSkipsTeamScopeWithoutTeam(t *testing.T) {
 	if allowed {
 		t.Fatal("Decide allowed a request without grants")
 	}
-	want := []string{"filewarehouse:read:any", "filewarehouse:read:own"}
+	want := []string{"filehouse:read:any", "filehouse:read:own"}
 	if got := permissionsOf(calls); !equalStrings(got, want) {
 		t.Fatalf("cascade attempted %v, want %v", got, want)
 	}
@@ -130,7 +130,7 @@ func TestDecideSkipsOwnScopeForNonOwner(t *testing.T) {
 	if allowed {
 		t.Fatal("Decide allowed a request without grants")
 	}
-	want := []string{"filewarehouse:read:any", "filewarehouse:read:team"}
+	want := []string{"filehouse:read:any", "filehouse:read:team"}
 	if got := permissionsOf(calls); !equalStrings(got, want) {
 		t.Fatalf("cascade attempted %v, want %v", got, want)
 	}
@@ -150,7 +150,7 @@ func TestDecideDeniesWhenAllScopesAreExhausted(t *testing.T) {
 	if allowed {
 		t.Fatal("Decide allowed a request without grants")
 	}
-	want := []string{"filewarehouse:delete:any", "filewarehouse:delete:team", "filewarehouse:delete:own"}
+	want := []string{"filehouse:delete:any", "filehouse:delete:team", "filehouse:delete:own"}
 	if got := permissionsOf(calls); !equalStrings(got, want) {
 		t.Fatalf("cascade attempted %v, want %v", got, want)
 	}
@@ -215,7 +215,7 @@ func (f *permissionsFixture) authorizer(allow allowFunc) *Authorizer {
 }
 
 func TestDecideSubjectDeniesStalePermissionVersion(t *testing.T) {
-	fixture := newPermissionsFixture(t, 9, "filewarehouse:read:any")
+	fixture := newPermissionsFixture(t, 9, "filehouse:read:any")
 	authorizer := fixture.authorizer(func(context.Context, iam.Claims, string, iam.Resource) (bool, string) {
 		t.Fatal("cascade must not run when the permission version is stale")
 		return false, ""
@@ -237,10 +237,10 @@ func TestDecideSubjectDeniesStalePermissionVersion(t *testing.T) {
 }
 
 func TestDecideSubjectRunsCascadeWithEmbeddedSubject(t *testing.T) {
-	fixture := newPermissionsFixture(t, 7, "filewarehouse:share:any")
+	fixture := newPermissionsFixture(t, 7, "filehouse:share:any")
 	var calls []allowCall
 	authorizer := fixture.authorizer(scriptedAllow(map[string]verdict{
-		"filewarehouse:share:any": {allow: true, reason: "permission granted"},
+		"filehouse:share:any": {allow: true, reason: "permission granted"},
 	}, &calls))
 
 	resource := iam.Resource{OwnerID: "u1", TeamID: "team_1"}
@@ -264,7 +264,7 @@ func TestDecideSubjectRunsCascadeWithEmbeddedSubject(t *testing.T) {
 }
 
 func TestGrantsIncludeDenyKeys(t *testing.T) {
-	fixture := newPermissionsFixture(t, 7, "filewarehouse:read:any", "!filewarehouse:delete:any")
+	fixture := newPermissionsFixture(t, 7, "filehouse:read:any", "!filehouse:delete:any")
 	authorizer := fixture.authorizer(nil)
 
 	grants, err := authorizer.Grants(context.Background(), testClaims("u1"))

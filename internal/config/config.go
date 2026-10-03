@@ -1,6 +1,6 @@
-// Package config loads the filewarehouse runtime configuration.
+// Package config loads the filehouse runtime configuration.
 //
-// Precedence: command line flag > FILEWAREHOUSE_* environment variable > Nekostick
+// Precedence: command line flag > FILEHOUSE_* environment variable > Nekostick
 // HOST/PORT environment variable > built-in default.
 package config
 
@@ -17,38 +17,38 @@ import (
 	"time"
 )
 
-// Environment variable names. FILEWAREHOUSE_* wins over HOST/PORT.
+// Environment variable names. FILEHOUSE_* wins over HOST/PORT.
 const (
-	EnvDSN              = "FILEWAREHOUSE_DSN"
-	EnvAddr             = "FILEWAREHOUSE_ADDR"
-	EnvPort             = "FILEWAREHOUSE_PORT"
-	EnvBlobDir          = "FILEWAREHOUSE_BLOB_DIR"
-	EnvKeyDir           = "FILEWAREHOUSE_KEY_DIR"
-	EnvLogLevel         = "FILEWAREHOUSE_LOG_LEVEL"
-	EnvNodeID           = "FILEWAREHOUSE_NODE_ID"
-	EnvPublicBaseURL    = "FILEWAREHOUSE_PUBLIC_BASE_URL"
-	EnvTrustedProxies   = "FILEWAREHOUSE_TRUSTED_PROXIES"
-	EnvTeamusersBaseURL = "FILEWAREHOUSE_TEAMUSERS_BASE_URL"
-	EnvTeamusersIssuer  = "FILEWAREHOUSE_TEAMUSERS_ISSUER"
-	EnvTeamusersAud     = "FILEWAREHOUSE_TEAMUSERS_AUDIENCE"
-	EnvTeamusersToken   = "FILEWAREHOUSE_TEAMUSERS_SERVICE_TOKEN"
-	EnvTeamusersClient  = "FILEWAREHOUSE_TEAMUSERS_CLIENT_ID"
-	EnvTeamusersSecret  = "FILEWAREHOUSE_TEAMUSERS_CLIENT_SECRET"
-	EnvTeamusersNATS    = "FILEWAREHOUSE_TEAMUSERS_NATS_URL"
-	EnvTeamusersTimeout = "FILEWAREHOUSE_TEAMUSERS_TIMEOUT"
+	EnvDSN              = "FILEHOUSE_DSN"
+	EnvAddr             = "FILEHOUSE_ADDR"
+	EnvPort             = "FILEHOUSE_PORT"
+	EnvBlobDir          = "FILEHOUSE_BLOB_DIR"
+	EnvKeyDir           = "FILEHOUSE_KEY_DIR"
+	EnvLogLevel         = "FILEHOUSE_LOG_LEVEL"
+	EnvNodeID           = "FILEHOUSE_NODE_ID"
+	EnvPublicBaseURL    = "FILEHOUSE_PUBLIC_BASE_URL"
+	EnvTrustedProxies   = "FILEHOUSE_TRUSTED_PROXIES"
+	EnvTeamusersBaseURL = "FILEHOUSE_TEAMUSERS_BASE_URL"
+	EnvTeamusersIssuer  = "FILEHOUSE_TEAMUSERS_ISSUER"
+	EnvTeamusersAud     = "FILEHOUSE_TEAMUSERS_AUDIENCE"
+	EnvTeamusersToken   = "FILEHOUSE_TEAMUSERS_SERVICE_TOKEN"
+	EnvTeamusersClient  = "FILEHOUSE_TEAMUSERS_CLIENT_ID"
+	EnvTeamusersSecret  = "FILEHOUSE_TEAMUSERS_CLIENT_SECRET"
+	EnvTeamusersNATS    = "FILEHOUSE_TEAMUSERS_NATS_URL"
+	EnvTeamusersTimeout = "FILEHOUSE_TEAMUSERS_TIMEOUT"
 	// EnvTeamusersAdminToken carries the teamusers admin token used by the
 	// register-permissions subcommand.
-	EnvTeamusersAdminToken = "FILEWAREHOUSE_TEAMUSERS_ADMIN_TOKEN"
-	EnvPresignDefaultTTL   = "FILEWAREHOUSE_PRESIGN_DEFAULT_TTL"
-	EnvPresignMaxTTL       = "FILEWAREHOUSE_PRESIGN_MAX_TTL"
-	EnvObjectMaxBytes      = "FILEWAREHOUSE_OBJECT_MAX_BYTES"
-	EnvPartMaxBytes        = "FILEWAREHOUSE_PART_MAX_BYTES"
-	EnvUploadTTL           = "FILEWAREHOUSE_UPLOAD_TTL"
-	EnvBucketQuotaBytes    = "FILEWAREHOUSE_BUCKET_DEFAULT_QUOTA_BYTES"
-	EnvBucketQuotaObjects  = "FILEWAREHOUSE_BUCKET_DEFAULT_QUOTA_OBJECTS"
-	EnvGCInterval          = "FILEWAREHOUSE_GC_INTERVAL"
-	EnvGCGrace             = "FILEWAREHOUSE_GC_GRACE"
-	EnvIdempotencyTTL      = "FILEWAREHOUSE_IDEMPOTENCY_TTL"
+	EnvTeamusersAdminToken = "FILEHOUSE_TEAMUSERS_ADMIN_TOKEN"
+	EnvPresignDefaultTTL   = "FILEHOUSE_PRESIGN_DEFAULT_TTL"
+	EnvPresignMaxTTL       = "FILEHOUSE_PRESIGN_MAX_TTL"
+	EnvObjectMaxBytes      = "FILEHOUSE_OBJECT_MAX_BYTES"
+	EnvPartMaxBytes        = "FILEHOUSE_PART_MAX_BYTES"
+	EnvUploadTTL           = "FILEHOUSE_UPLOAD_TTL"
+	EnvBucketQuotaBytes    = "FILEHOUSE_BUCKET_DEFAULT_QUOTA_BYTES"
+	EnvBucketQuotaObjects  = "FILEHOUSE_BUCKET_DEFAULT_QUOTA_OBJECTS"
+	EnvGCInterval          = "FILEHOUSE_GC_INTERVAL"
+	EnvGCGrace             = "FILEHOUSE_GC_GRACE"
+	EnvIdempotencyTTL      = "FILEHOUSE_IDEMPOTENCY_TTL"
 
 	// EnvFallbackHost and EnvFallbackPort are the Nekostick fleet fallbacks for
 	// the listener.

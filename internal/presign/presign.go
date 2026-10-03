@@ -1,5 +1,5 @@
 // Package presign mints and verifies HMAC-SHA256 presigned URL tokens for
-// nsc-filewarehouse.
+// nsc-filehouse.
 //
 // A token is base64url(payload JSON) + "." + base64url(HMAC-SHA256(key,
 // base64url(payload JSON))). The MAC covers the exact encoded payload segment
