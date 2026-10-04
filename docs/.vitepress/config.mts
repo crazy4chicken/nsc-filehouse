@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitepress'
 
-const base = '/nsc-filewarehouse/'
+const base = '/nsc-filehouse/'
 
 const guideSidebar = [
   {
