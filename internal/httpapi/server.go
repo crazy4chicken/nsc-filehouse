@@ -71,10 +71,18 @@ func (s *Server) Logger() *slog.Logger { return s.log }
 // Version returns the build version.
 func (s *Server) Version() string { return s.opts.Version }
 
-// Handler builds the chi router: Recover, RequestID and AccessLog wrap every
+// Handler returns the server's chi router as an http.Handler.
+func (s *Server) Handler() http.Handler {
+	return s.Router()
+}
+
+// Router builds the chi router: Recover, RequestID and AccessLog wrap every
 // route, /healthz and /readyz stay public, the /api/v1 group requires a bearer
 // token and idempotent POSTs, and the presign redemption routes are public.
-func (s *Server) Handler() http.Handler {
+//
+// It is exported so tooling can walk the mounted routes; with zero-value
+// Options the route tree is built without auth or idempotency middleware.
+func (s *Server) Router() chi.Router {
 	router := chi.NewRouter()
 	router.Use(Recover(s.log))
 	router.Use(RequestID)

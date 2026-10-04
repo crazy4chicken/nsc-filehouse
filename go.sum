@@ -1,3 +1,5 @@
+github.com/crazy4chicken/nsc-teamusers/apidocs/go v0.1.0 h1:BvXHiKpvbhwZnzp3BDkz+vpFxM9Y+nqz0KJvc0WrdbA=
+github.com/crazy4chicken/nsc-teamusers/apidocs/go v0.1.0/go.mod h1:ESixJ5oyAyJaYtEWYBVuGNiFWGNlpKjabLWKPX+tcRA=
 github.com/crazy4chicken/nsc-teamusers/sdk/go v0.2.0 h1:MCP+lnIBtAJO78R+X6WtIZIQ+RGuJKS6iE7fz7NNvFc=
 github.com/crazy4chicken/nsc-teamusers/sdk/go v0.2.0/go.mod h1:BrI3dYo89hgHyHV4Bd6efxMx7r8hQB1in+MkhKI6h10=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

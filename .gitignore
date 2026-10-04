@@ -15,3 +15,9 @@ data/
 coverage.out
 coverage.html
 *.coverprofile
+
+# Docs site (VitePress + generated spec)
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/public/openapi.yaml

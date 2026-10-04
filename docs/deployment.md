@@ -12,7 +12,7 @@
 | teamusers IAM | 舰队既有服务 | 令牌签发与授权判定；预置在 compose 文档中一并下发 |
 
 > 本文档是**部署说明**。完整的权限模型、API 参考、配置表与数据模型见
-> [技术手册](./manual.md)；面向使用者的简介与快速上手见 [README](../README.md)。
+> [技术手册](/manual)；面向使用者的简介与快速上手见 [README](https://github.com/crazy4chicken/nsc-filehouse/blob/main/README.md)。
 
 ## 1. 前置准备
 
@@ -58,7 +58,7 @@ export FILEHOUSE_TEAMUSERS_BASE_URL="$IAM"
 
 **(c) 给业务用户/团队建角色并绑定权限**。权限键为
 `filehouse:<read|write|delete|share>:<own|team|any>` 与 `filehouse:manage:any`，
-语义见[技术手册的权限章节](./manual.md)。
+语义见[技术手册的权限章节](/manual)。
 
 ```sh
 ROLE_ID=$(curl -sS -X POST "$IAM/roles/" \
@@ -89,7 +89,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   -o filehouse ./cmd/filehouse
 ```
 
-或推送一个 `v*` 标签，由 [release workflow](../.github/workflows/release.yml) 自动构建并发布
+或推送一个 `v*` 标签，由 [release workflow](https://github.com/crazy4chicken/nsc-filehouse/blob/main/.github/workflows/release.yml) 自动构建并发布
 svchost 兼容资产 `filehouse_<version>_<arch>.zip`（`x64`、`arm64`），入口二进制
 `filehouse` 位于 ZIP 根目录；每个资产的 SHA-256 会写进该次运行页的 Summary，可直接抄进
 compose 模板的 `sha256`。`v0.1.0` 已按此流程发布（见 §3 模板中的摘要）：
@@ -302,4 +302,4 @@ curl -sS https://files.example.com/files/api/v1/buckets/smoke/objects/hello.txt 
 | 上传返回 `413 quota_exceeded` | 桶或主体配额已满 | 提高配额或删除对象；是哪一级配额、上限与当前用量写在服务端日志里（响应体只带稳定错误码） |
 | 分片上传 `422 part_mismatch` | 客户端提交的分片摘要与服务端暂存不符 | 重新上传该分片；`GET /api/v1/buckets/{bucket}/uploads/{id}` 可查看服务端分片 |
 
-更多细节见[技术手册](./manual.md)：权限模型、错误码全表、数据模型与 GC 语义。
+更多细节见[技术手册](/manual)：权限模型、错误码全表、数据模型与 GC 语义。

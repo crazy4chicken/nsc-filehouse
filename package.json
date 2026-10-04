@@ -1,0 +1,16 @@
+{
+  "name": "nsc-filewarehouse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "predocs:dev": "go run ./cmd/genspec",
+    "predocs:build": "go run ./cmd/genspec"
+  },
+  "devDependencies": {
+    "teamusers-apidocs-vitepress": "^0.1.0",
+    "vitepress": "^1.6.4"
+  },
+  "packageManager": "pnpm@12.8.1"
+}

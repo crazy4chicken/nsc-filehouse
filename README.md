@@ -139,6 +139,8 @@ curl -s "<上一步返回的 url>" -o report.pdf     # 无需 Authorization 头
 
 ## 文档
 
+- 在线文档站点：[https://crazy4chicken.github.io/nsc-filewarehouse/](https://crazy4chicken.github.io/nsc-filewarehouse/)
+  — 使用指南（快速开始、上传下载、权限模型）与完整 API 参考。
 - [docs/manual.md](docs/manual.md) — 技术手册：架构与请求时序、鉴权与权限模型、数据模型与事务
   不变量、blob 布局与 GC、完整 API 参考、完整配置表、运维与故障排查、测试、已知限制。
 - [docs/deployment.md](docs/deployment.md) — 部署说明：Nekostick compose 示例、反向代理、备份与升级。
