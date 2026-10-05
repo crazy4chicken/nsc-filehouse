@@ -226,7 +226,7 @@ func runDoctor(cfg *config.Config, log *slog.Logger) int {
 		if err != nil {
 			fail("migrations", err)
 		} else {
-			pass("migrations", fmt.Sprintf("version %d in %s", applied, time.Since(started).Round(time.Millisecond)))
+			pass("migrations", fmt.Sprintf("version %d in %s (schema %s)", applied, time.Since(started).Round(time.Millisecond), store.Schema))
 		}
 	}
 

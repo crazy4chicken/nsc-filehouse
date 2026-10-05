@@ -15,17 +15,27 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Schema is the PostgreSQL schema that owns every table, index and goose
+// version row this service creates. It is fixed to the service name so that
+// nothing depends on write access to public, which PostgreSQL 15 and newer
+// grant only to the database owner.
+const Schema = "filehouse"
+
+// schemaSearchPath pins the session search_path: the filehouse schema first,
+// public kept behind it so functions installed there (extensions, operators)
+// stay reachable.
+const schemaSearchPath = Schema + ",public"
+
 // Store is a pgx backed metadata store.
 type Store struct {
 	pool *pgxpool.Pool
 	log  *slog.Logger
 }
 
-// Open connects to PostgreSQL and verifies the connection.
-func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
-	if log == nil {
-		log = slog.Default()
-	}
+// PoolConfig parses a DSN and applies the session settings every filehouse
+// connection carries. A search_path a DSN may specify is overridden: the
+// schema is fixed, never caller chosen.
+func PoolConfig(dsn string) (*pgxpool.Config, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
@@ -34,6 +44,19 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 		cfg.ConnConfig.RuntimeParams = map[string]string{}
 	}
 	cfg.ConnConfig.RuntimeParams["application_name"] = "nsc-filehouse"
+	cfg.ConnConfig.RuntimeParams["search_path"] = schemaSearchPath
+	return cfg, nil
+}
+
+// Open connects to PostgreSQL and verifies the connection.
+func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	cfg, err := PoolConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)

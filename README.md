@@ -45,7 +45,8 @@ flowchart LR
 ### 环境要求
 
 - Go 1.26+（构建本服务）
-- PostgreSQL 16+（空库；启动时自动应用内嵌迁移）
+- PostgreSQL 16+（空库；启动时自动应用内嵌迁移。全部表建在服务自建的 `filehouse` schema 内，
+  不需要 `public` 的建表权限）
 - 一个可访问的 teamusers 地址，以及服务凭据（client id/secret 或静态服务令牌）
 - 首次使用前，需要 teamusers 管理员令牌执行一次权限目录注册
 

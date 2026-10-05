@@ -29,6 +29,16 @@ createdb --owner=filehouse filehouse
 连接串建议使用 `sslmode=require` 或更严格模式（跨主机访问时）。迁移是幂等的：
 重复启动只会报告 `no pending migrations`。
 
+全部表、索引与 goose 版本表都建在固定的 `filehouse` schema 内（与 `store.Schema` 一致），
+每个连接会话的 `search_path` 被固定为 `filehouse, public`，连接串里自带的 `search_path` 会被忽略；
+`public` 只用于解析可能装在那里的扩展函数。因此部署角色只需要该库的 `CREATE` 权限即可：
+启动时自动执行 `CREATE SCHEMA IF NOT EXISTS filehouse`，schema 归该角色所有，无需触碰
+PostgreSQL 15+ 已默认收紧的 `public`。也可以由 DBA 预建（`CREATE SCHEMA filehouse AUTHORIZATION filehouse;`）
+并授予角色 `USAGE`/`CREATE`。
+
+若数据库里已有旧版本建在 `public` 的表（`public.goose_db_version` 存在而 `filehouse.goose_db_version`
+不存在），服务会拒绝启动并提示先 `ALTER TABLE public.<table> SET SCHEMA filehouse`，不会静默切换到空 schema。
+
 ### 1.2 teamusers 侧准备
 
 `filehouse` 自身不管理用户，需要先在 teamusers 上完成三件事。以下命令假定

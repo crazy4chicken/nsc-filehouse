@@ -80,7 +80,14 @@ func TestMain(m *testing.M) {
 		os.RemoveAll(rootDir)
 		os.Exit(1)
 	}
-	pool, err := pgxpool.New(ctx, dsn)
+	poolConfig, err := store.PoolConfig(dsn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "integration suite: parse pool config: %v\n", err)
+		metadata.Close()
+		os.RemoveAll(rootDir)
+		os.Exit(1)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "integration suite: open pool: %v\n", err)
 		metadata.Close()

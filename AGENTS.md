@@ -56,6 +56,12 @@ token or a client id/secret pair.
   (`used_bytes`, `used_objects`), object rows and blob `refcount` move in one
   transaction under `SELECT ... FOR UPDATE`; quota rejection happens before
   commit. Never update these counters outside the store.
+- **The PostgreSQL schema is fixed.** Every table, index and the goose version
+  row live in the schema named after the service (`store.Schema`, `filehouse`);
+  pooled connections pin `search_path` to `filehouse,public` and `Migrate`
+  creates the schema before goose runs, so a deployment never needs write access
+  to `public` (PostgreSQL 15+ reserves it for the database owner). A database
+  whose migrations ran in `public` is refused at startup, never adopted.
 - **Blobs are content-addressed.** The key is the SHA-256 of the stored bytes;
   blob files are only removed by the reaper after `refcount = 0` and after the
   GC grace period; orphan files written but never committed to an object (e.g.

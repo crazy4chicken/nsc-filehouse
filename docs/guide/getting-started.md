@@ -21,7 +21,9 @@ and sharing a presigned URL. For the full HTTP contract see the
 
 - Go 1.26 or newer to build the service.
 - PostgreSQL 16+ with an empty database. The embedded migrations are applied
-  automatically at startup; the deployment role needs DDL rights on that database.
+  automatically at startup into the fixed `filehouse` schema, which the service
+  creates and owns; the deployment role needs DDL rights on the database but
+  none on `public`.
 - A reachable teamusers deployment, plus service credentials for this instance:
   a client id/secret pair (recommended) or a static service token.
 - A teamusers admin token for the one-time permission catalog registration. The

@@ -124,6 +124,9 @@ token 只证明身份，不携带权限；权限永远由 teamusers 的权限数
 
 ### 3.1 表结构（`migrations/0001_init.sql`，共 7 张表）
 
+所有表都建在固定的 `filehouse` schema 内（`store.Schema`；连接会话的 `search_path` 固定为
+`filehouse, public`，启动时自动 `CREATE SCHEMA IF NOT EXISTS`），`public` 不承载本服务的任何对象。
+
 **buckets**：`id` text PK（ULID）、`name` text UNIQUE NOT NULL、`owner_id`/`owner_kind` text NOT NULL、
 `team_id` text NOT NULL DEFAULT `''`、`description` text NOT NULL DEFAULT `''`、`quota_bytes`/`quota_objects`
 bigint NOT NULL DEFAULT 0（0 = 无限）、`used_bytes`/`used_objects` bigint NOT NULL DEFAULT 0（逻辑用量计数器）、
@@ -166,8 +169,10 @@ bigint DEFAULT 0（0 = 无限）、`updated_at`。
 - **删除桶必须为空**：锁桶后统计 objects，非空返回 `ErrBucketNotEmpty`（`409 bucket_not_empty`），不做隐式
   递归删除。
 - **建桶**：`name` 唯一冲突 → `409 bucket_exists`；`owner_kind` 必填；id 为空时由 store 生成。
-- **迁移**：启动时在 PostgreSQL advisory lock（键 `0x6e736366696c6577`，ASCII `nscfilew`）下执行内嵌 goose
-  迁移，幂等，多实例同时启动不会互相打断。
+- **迁移**：启动时在 PostgreSQL advisory lock（键 `0x6e736366696c6577`，ASCII `nscfilew`）下先
+  `CREATE SCHEMA IF NOT EXISTS filehouse`，再执行内嵌 goose 迁移（版本表 `goose_db_version` 也在该 schema
+  内），幂等，多实例同时启动不会互相打断；若数据库仍留有旧版建在 `public` 的迁移（`public.goose_db_version`
+  存在而 `filehouse.goose_db_version` 不存在），直接拒绝启动而不是静默切换 schema。
 
 ## 4. 存储布局与内容去重
 
@@ -411,7 +416,7 @@ teamusers base URL + （静态服务令牌或 client id/secret 二者之一）�
 
 | 变量 | 默认值 | 含义 | 生产建议 |
 | --- | --- | --- | --- |
-| `FILEHOUSE_DSN` | 无（必填） | PostgreSQL 连接串（URL 或 key/value） | 独立库与最小权限角色；密码走密钥管理 |
+| `FILEHOUSE_DSN` | 无（必填） | PostgreSQL 连接串（URL 或 key/value）；会话 `search_path` 固定为 `filehouse, public`，连接串里的同名参数被忽略 | 独立库与最小权限角色（只需该库的 `CREATE`，无需 `public` 权限）；密码走密钥管理 |
 | `FILEHOUSE_ADDR` | `127.0.0.1`（`HOST` 兜底） | 监听地址 | 只在反代后或容器网内使用；外部直达才用 `0.0.0.0` |
 | `FILEHOUSE_PORT` | `8080`（`PORT` 兜底） | 监听端口；`0` 选空闲端口 | 与编排端口一致；`0` 仅用于测试 |
 | `FILEHOUSE_BLOB_DIR` | `data` | `blobs/`、`tmp/`、`uploads/` 根目录 | 本地持久卷；**一个可写目录一个副本**；容量单独规划 |
@@ -454,7 +459,8 @@ teamusers base URL + （静态服务令牌或 client id/secret 二者之一）�
 
 ### 8.2 启动、迁移与升级
 
-启动顺序：校验配置 → 连接并 ping PostgreSQL → advisory lock 下执行内嵌 goose 迁移 → 打开 blob 目录（建目录 +
+启动顺序：校验配置 → 连接并 ping PostgreSQL（`search_path` 固定为 `filehouse, public`）→ advisory lock 下建
+`filehouse` schema 并执行内嵌 goose 迁移 → 打开 blob 目录（建目录 +
 可写探测）→ 构建 IAM authorizer → 加载/创建预签名密钥 → 启动 GC goroutine → 监听端口。任一步失败即退出
 （配置错误退出码 2，其余 1）。
 
@@ -519,7 +525,7 @@ FILEHOUSE_TEST_PG='postgres://postgres:postgres@127.0.0.1:5432/filehouse_test?ss
 ```
 
 `FILEHOUSE_TEST_PG` 门控 `test/`；未设置时整个包跳过，`go test ./...` 在没有 PostgreSQL 的机器上保持
-绿色。**该库会被清空**：每个用例执行前 truncate 所有表，并使用临时 blob 目录与临时预签名密钥，绝不要指向
+绿色。**该库会被清空**：套件自动创建 `filehouse` schema，每个用例执行前 truncate 该 schema 的所有表，并使用临时 blob 目录与临时预签名密钥，绝不要指向
 生产库。`internal/iamfixture` 提供真实签名的假 teamusers（Ed25519 JWKS/JWT、权限缓存、deny 与条件判定、
 client-credentials、权限注册），测试断言的是可观察 HTTP 行为而不是内部接线。集成用例覆盖：未认证拒绝、无关
 权限拒绝、scope 级联、对象往返（Range/ETag/校验和）、内容去重与 GC 回收、分片上传全流程、桶配额、预签名全流程

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/crazy4chicken/nsc-filehouse/migrations"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
@@ -34,6 +35,12 @@ func (s *Store) Migrate(ctx context.Context) (int64, error) {
 		}
 	}()
 
+	// Everything this service owns lives in the fixed filehouse schema, so it
+	// must exist before goose creates its version table there.
+	if err := ensureSchema(ctx, conn); err != nil {
+		return 0, err
+	}
+
 	// Closing the sql.DB does not close the pool it was opened from.
 	db := stdlib.OpenDBFromPool(s.pool)
 	defer db.Close()
@@ -60,4 +67,24 @@ func (s *Store) Migrate(ctx context.Context) (int64, error) {
 	}
 	s.log.Info("migrations applied", "count", len(applied), "versions", versions, "version", version)
 	return version, nil
+}
+
+// ensureSchema creates the filehouse schema when it is missing. It refuses a
+// database whose previous migrations ran in public: adopting it here would
+// silently point the service at an empty schema while every existing bucket,
+// object and blob row stays stranded behind it.
+func ensureSchema(ctx context.Context, conn *pgxpool.Conn) error {
+	var legacy bool
+	err := conn.QueryRow(ctx, `SELECT to_regclass($1) IS NULL AND to_regclass($2) IS NOT NULL`,
+		Schema+".goose_db_version", "public.goose_db_version").Scan(&legacy)
+	if err != nil {
+		return fmt.Errorf("inspect schema state: %w", err)
+	}
+	if legacy {
+		return fmt.Errorf("legacy migrations found in the public schema: move the tables into %s (ALTER TABLE public.<table> SET SCHEMA %s) or start from an empty database", Schema, Schema)
+	}
+	if _, err := conn.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS `+Schema); err != nil {
+		return fmt.Errorf("create schema %s: %w", Schema, err)
+	}
+	return nil
 }
