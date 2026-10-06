@@ -75,7 +75,10 @@ func RequestID(next http.Handler) http.Handler {
 	})
 }
 
-// AccessLog emits one structured line per request.
+// AccessLog emits one structured line per request. The liveness and readiness
+// probes are logged at debug level: a host polls them continuously, so at the
+// default level they would bury the traffic that matters. Their failures are
+// still reported by the probes themselves.
 func AccessLog(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,13 +101,21 @@ func AccessLog(log *slog.Logger) func(http.Handler) http.Handler {
 			if requestID := httpx.RequestIDFromContext(r); requestID != "" {
 				attrs = append(attrs, "request_id", requestID)
 			}
-			if status >= http.StatusInternalServerError {
+			switch {
+			case isProbePath(r.URL.Path):
+				log.Debug("http request", attrs...)
+			case status >= http.StatusInternalServerError:
 				log.Error("http request", attrs...)
-				return
+			default:
+				log.Info("http request", attrs...)
 			}
-			log.Info("http request", attrs...)
 		})
 	}
+}
+
+// isProbePath reports whether path is one of the public health probes.
+func isProbePath(path string) bool {
+	return path == pathHealthz || path == pathReadyz
 }
 
 // ClientIP resolves the client IP once per request and exposes it to handlers

@@ -425,12 +425,12 @@ func tamperSignature(t *testing.T, raw string) string {
 }
 
 // TestUnauthenticatedRequestsRejected covers (1): a missing bearer token and an
-// expired token are both answered 401 invalid_token.
+// expired token are answered 401 with the matching classified detail.
 func TestUnauthenticatedRequestsRejected(t *testing.T) {
 	h := newHarness(t)
 
 	problem := requireProblem(t, h.mustDo(t, http.MethodGet, "/api/v1/buckets", "", nil, nil),
-		http.StatusUnauthorized, "invalid_token")
+		http.StatusUnauthorized, "invalid_token_missing")
 	if problem.Title != "Unauthorized" {
 		t.Fatalf("title = %q, want Unauthorized", problem.Title)
 	}
@@ -442,7 +442,7 @@ func TestUnauthenticatedRequestsRejected(t *testing.T) {
 	expired := h.fixture.Issue(iamfixture.Claims{Subject: "alice", Kind: "user", PermVer: 1})
 	h.fixture.ResetTokenExpiration()
 	requireProblem(t, h.mustDo(t, http.MethodGet, "/api/v1/buckets", expired, nil, nil),
-		http.StatusUnauthorized, "invalid_token")
+		http.StatusUnauthorized, "invalid_token_expired")
 }
 
 // TestUnrelatedPermissionForbidden covers (2): a subject holding only an

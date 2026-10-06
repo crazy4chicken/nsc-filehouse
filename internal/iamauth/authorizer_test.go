@@ -310,13 +310,18 @@ func TestAuthenticateWritesTeamusersProblemDocument(t *testing.T) {
 		handler.ServeHTTP(w, r.WithContext(httpx.WithRequestID(r.Context(), "req_01H")))
 	})
 
-	cases := map[string]string{
-		"missing header": "",
-		"wrong scheme":   "Basic dXNlcjpwYXNz",
-		"empty token":    "Bearer ",
-		"opaque token":   "Bearer not.a.jwt",
+	cases := []struct {
+		name          string
+		authorization string
+		detail        string
+	}{
+		{"missing header", "", DetailTokenMissing},
+		{"wrong scheme", "Basic dXNlcjpwYXNz", DetailTokenMalformed},
+		{"empty token", "Bearer", DetailTokenMalformed},
+		{"opaque token", "Bearer not.a.jwt", DetailInvalidToken},
 	}
-	for name, authorization := range cases {
+	for _, testCase := range cases {
+		name, authorization, wantDetail := testCase.name, testCase.authorization, testCase.detail
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/api/v1/buckets", nil)
 		if authorization != "" {
@@ -336,8 +341,8 @@ func TestAuthenticateWritesTeamusersProblemDocument(t *testing.T) {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &problem); err != nil {
 			t.Fatalf("%s: decode problem document: %v", name, err)
 		}
-		if problem.Type != "about:blank" || problem.Title != "Unauthorized" || problem.Status != http.StatusUnauthorized || problem.Detail != "invalid_token" {
-			t.Fatalf("%s: problem document = %+v", name, problem)
+		if problem.Type != "about:blank" || problem.Title != "Unauthorized" || problem.Status != http.StatusUnauthorized || problem.Detail != wantDetail {
+			t.Fatalf("%s: problem document = %+v, want detail %q", name, problem, wantDetail)
 		}
 		if problem.Instance != "req_01H" {
 			t.Fatalf("%s: instance = %q, want the request id from the context", name, problem.Instance)
@@ -345,6 +350,44 @@ func TestAuthenticateWritesTeamusersProblemDocument(t *testing.T) {
 	}
 	if reached {
 		t.Fatal("an unauthenticated request reached the next handler")
+	}
+}
+
+// TestDetailForVerificationError pins the mapping from SDK verifier messages to
+// the stable 401 detail codes. The SDK reports free-form text, so an unhandled
+// rewording must fall back to the generic code instead of misclassifying.
+func TestDetailForVerificationError(t *testing.T) {
+	cases := []struct {
+		message string
+		want    string
+	}{
+		{"verify access token: failed to parse jws: failed to parse JOSE headers: invalid character", DetailTokenMalformed},
+		{"access token is empty", DetailTokenMalformed},
+		{"verify access token: could not verify message using any of the signatures or keys", DetailTokenSignature},
+		{"access token is expired", DetailTokenExpired},
+		{"verify access token: \"exp\" not satisfied: token is expired", DetailTokenExpired},
+		{"invalid access token issuer", DetailTokenIssuer},
+		{"verify access token: \"iss\" not satisfied: values do not match", DetailTokenIssuer},
+		{"invalid access token audience", DetailTokenAudience},
+		{"verify access token: \"aud\" not satisfied: values do not match", DetailTokenAudience},
+		{"verify access token: \"nbf\" not satisfied: token is not yet valid", DetailTokenClaims},
+		{"invalid access token perm_ver", DetailTokenClaims},
+		{"invalid access token step_up_time", DetailTokenClaims},
+		{"access token subject is missing", DetailTokenClaims},
+		{"fetch JWKS: dial tcp 127.0.0.1:18080: connect: connection refused", DetailTokenJWKS},
+		{"fetch JWKS: x509: certificate signed by unknown authority", DetailTokenJWKS},
+		{"JWKS cache is unavailable", DetailTokenJWKS},
+		{"refresh JWKS for key \"k1\": boom", DetailTokenJWKS},
+		{"something nobody classified yet", DetailInvalidToken},
+		{"", DetailInvalidToken},
+	}
+	for _, testCase := range cases {
+		if got := DetailForVerificationError(errors.New(testCase.message)); got != testCase.want {
+			t.Errorf("DetailForVerificationError(%q) = %q, want %q", testCase.message, got, testCase.want)
+		}
+	}
+	if got := DetailForVerificationError(nil); got != DetailInvalidToken {
+		t.Errorf("DetailForVerificationError(nil) = %q, want %q", got, DetailInvalidToken)
 	}
 }
 

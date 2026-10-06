@@ -22,8 +22,9 @@ against the teamusers JWKS document at `<FILEHOUSE_TEAMUSERS_BASE_URL>/.well-kno
   `FILEHOUSE_TEAMUSERS_AUDIENCE` (empty variables select the teamusers defaults),
 - `exp` must be in the future.
 
-A missing, malformed, unverifiable or expired token is rejected with `401
-invalid_token` (RFC 9457 problem document). **Access tokens never carry
+A missing, malformed, unverifiable or expired token is rejected with `401` and
+a classified `invalid_token_*` detail (RFC 9457 problem document); the log
+record with the same request id carries the underlying verifier error. **Access tokens never carry
 permissions** — they only establish the subject, its kind (`user` or `service`)
 and its optional team. Permissions are looked up separately for every decision
 and must never be inferred from token contents.
@@ -118,7 +119,7 @@ The 401/403/503 split is deliberate:
 
 | Response | Meaning |
 | --- | --- |
-| `401 invalid_token` | The bearer token is missing or failed verification (signature, issuer, audience, expiry). |
+| `401 invalid_token*` | The bearer token is missing, malformed, expired, or failed verification; the `detail` names the reason (`_missing`, `_malformed`, `_expired`, `_audience`, `_issuer`, `_signature`, `_claims`, `_jwks`, or the generic `invalid_token`). |
 | `403 insufficient_permissions` | The token is valid, but no grant allowed the operation; `reason` says why. |
 | `503 iam_unavailable` | The decision could not be evaluated; retry after the IAM dependency recovers. |
 
@@ -162,7 +163,7 @@ preserved. `GET /api/v1/usage` shows the caller's storage usage and quotas.
 
 | Symptom | Likely cause | Action |
 | --- | --- | --- |
-| `401 invalid_token` | Expired token, `iss`/`aud` mismatch, or the JWKS endpoint is unreachable | Align `FILEHOUSE_TEAMUSERS_AUDIENCE`/`_ISSUER` with teamusers; `doctor` checks JWKS reachability. |
+| `401 invalid_token_expired` / `_audience` / `_issuer` / `_jwks` | Expired token, `iss`/`aud` mismatch, or the JWKS endpoint is unreachable | Refresh the token; align `FILEHOUSE_TEAMUSERS_AUDIENCE`/`_ISSUER` with teamusers; `doctor` checks JWKS reachability. The `detail` of the response names the cause. |
 | `403 insufficient_permissions` with a `reason` listing keys | The subject holds no matching grant | Bind the listed `filehouse:*` key (or a broader one) to the subject's role in teamusers. |
 | Permission changes seem ignored | The local cache has not expired yet | Wait out the ~2-minute TTL, or enable NATS invalidation events. |
 | `503 iam_unavailable` | The authorizer is not ready, or teamusers is unreachable / the service credentials are invalid | Check `FILEHOUSE_TEAMUSERS_BASE_URL` and the client id/secret; see the `iam` line of `doctor`. |

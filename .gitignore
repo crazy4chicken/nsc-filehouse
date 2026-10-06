@@ -4,6 +4,9 @@ data/
 # Local scaffolding (verification builds, tokens, scratch databases helpers).
 .tmp/
 
+# Local full-environment reproduction (teamusers checkout, binaries, keys, data).
+.repro/
+
 # Build output
 *.exe
 /bin/

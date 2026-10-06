@@ -32,7 +32,9 @@
 1. **中间件**（`Server.Handler`，按序）：`Recover` → `RequestID` → `AccessLog` → `ClientIP`。`X-Request-ID`
    合法（1–128 个可打印 ASCII）时沿用，否则生成新 id，并回写到响应头。
 2. **认证**：`Authorization: Bearer <JWT>` 由 teamusers SDK 的 Verifier 用 JWKS 验签，claims 放入请求
-   context。失败、缺失或格式错误统一 `401 invalid_token`。
+   context。失败、缺失或格式错误统一 `401`，`detail` 按原因分类（`invalid_token_missing`、`_malformed`、
+   `_expired`、`_audience`、`_issuer`、`_signature`、`_claims`、`_jwks`，兜底 `invalid_token`），并同时输出一条
+   带同 `request_id` 的 `WARN` 日志。
 3. **资源解析**：路径中的 bucket 名先做语法校验（非法 `400 invalid_bucket_name`），再按 `name` 查
    `buckets`（不存在 `404 bucket_not_found`）。分片上传还会加载 upload 并校验它属于该桶、未过期。
 4. **权限级联**：构造 `iam.Resource{OwnerID, TeamID, Attrs}`，`Attrs` 视操作携带
@@ -62,7 +64,7 @@ token 只证明身份，不携带权限；权限永远由 teamusers 的权限数
 | `alg` | 使用 teamusers JWKS 中对应 `kid` 的公钥验签（teamusers 使用 Ed25519 密钥），拒绝无法验证的 token | SDK Verifier + `internal/iamauth/authorizer.go` |
 | `iss` | 必须等于 `FILEHOUSE_TEAMUSERS_ISSUER`；为空时用 SDK 默认值（默认 issuer 为 `teamusers`，启动日志给 warning） | `Options.Issuer` |
 | `aud` | 必须等于 `FILEHOUSE_TEAMUSERS_AUDIENCE`；为空时用 teamusers SDK 默认值 | `Options.Audience` |
-| `exp` | 已过期即验证失败，返回 `401 invalid_token` | SDK Verifier |
+| `exp` | 已过期即验证失败，返回 `401 invalid_token_expired` | SDK Verifier |
 | `sub` | 作为授权主体（`claims.Subject`）；为空时所有决策直接拒绝 | `Authorizer.Decide` |
 | `kind` | Verifier 只接受 `user` 与 `service`；记录用量/配额时缺省按 `user` 处理 | `internal/iamauth`、`subjectKind` |
 | `perm_ver` | 权限版本：`Grants` 只复用与 token 版本一致的缓存条目；预签名兑换在缓存未命中/过期（默认 2 分钟 TTL）或收到 NATS 失效事件后按签名内版本比对，不一致（权限已变更）即拒绝；缓存条目仍在有效期内时最长约 2 分钟内可能继续放行 | `DecideSubject`、`Grants` |
@@ -261,7 +263,8 @@ reaper 启动后立即执行一轮，之后每 `FILEHOUSE_GC_INTERVAL` 一轮；
 ### 6.1 通用约定
 
 - **认证**：除公开路由（`/healthz`、`/readyz`、`/presign/*`）外必须携带 `Authorization: Bearer <JWT>`；
-  失败、缺失或过期都是 `401 invalid_token`。
+  失败、缺失或过期的 `detail` 是按原因分类的 `invalid_token_*`（缺 header 为 `invalid_token_missing`，兜底
+  `invalid_token`），原因同时写进同 `request_id` 的 `WARN` 日志。
 - **错误体**：`application/problem+json`（RFC 9457）：
   `{"type":"about:blank","title":"...","status":<code>,"detail":"<稳定错误码>","instance":"<request id>"}`；
   403 额外带 `reason`（尝试过的权限键）。未知路径 `404 invalid_request`，方法不允许 `405 invalid_request`。
@@ -381,7 +384,7 @@ limit=&cursor=` 按 `(subject_kind, subject_id)` 排序；`PUT /api/v1/admin/quo
 | 400 | `invalid_bucket_name` | 桶名不匹配语法：建桶、路径参数、预签名请求 |
 | 400 | `invalid_key` | 对象 key 非法：PUT/GET/DELETE 对象、发起上传、预签名请求 |
 | 400 | `invalid_request` | JSON 解析失败、参数非法（limit/负数配额/非法 method/TTL 超上限/非法 kind/cursor 非法/分片列表非法）；未知路径（404）与方法不允许（405）也用它 |
-| 401 | `invalid_token` | 无/格式错误/验签失败/过期的 Bearer token |
+| 401 | `invalid_token` 及其分类码 | 无 header（`invalid_token_missing`）、header 非单一 Bearer 或 JWS 不可解析（`_malformed`）、过期（`_expired`）、`aud`/`iss` 不匹配（`_audience`/`_issuer`）、验签失败（`_signature`）、claims 非法（`_claims`）、JWKS 拉取失败（`_jwks`）；无法归类时用兜底 `invalid_token` |
 | 403 | `insufficient_permissions` | 级联拒绝（含缓存/传输失败被 SDK 折合的拒绝）；`reason` 列出尝试过的权限键或失败原因（如 `authorization service unavailable`） |
 | 403 | `presign_invalid` | 签名缺失、伪造、不匹配方法/桶/key |
 | 404 | `bucket_not_found` | 桶不存在（或提交对象时桶已消失） |
@@ -488,7 +491,10 @@ PostgreSQL 行与 blob 目录是同一份状态的两半，**必须一起备份/
 
 输出为单行 JSON（`slog`，stdout），公共字段 `service`、`node_id`、`version`；访问日志字段 `method`、`path`、
 `status`、`bytes`、`duration_ms`，解析到 IP 时带 `client_ip`，以及 `request_id`。5xx 以 `error` 级别输出，
-其余 `info`。request id 优先沿用合法的入站 `X-Request-ID`（1–128 个可打印 ASCII），否则生成新 id；响应头回写
+其余 `info`；`/healthz` 与 `/readyz` 的访问日志是 `debug` 级（探针由宿主持续轮询，默认不输出，
+`FILEHOUSE_LOG_LEVEL=debug` 可见；`/readyz` 失败仍由探针自身输出 `WARN` 失败项）。401 除访问日志外还会输出一条
+`WARN` `iam: access token rejected`，字段 `detail`（与响应 `detail` 一致）、`method`、`path`、`request_id` 与脱敏后的
+SDK 错误。request id 优先沿用合法的入站 `X-Request-ID`（1–128 个可打印 ASCII），否则生成新 id；响应头回写
 `X-Request-ID`，problem 文档的 `instance` 也是它，排障时用它串联访问日志与错误日志。密钥与令牌不落日志：认证
 失败日志中的原始 token 被替换为 `[redacted]`；`status` 输出对 DSN 密码、服务令牌与 client secret 打码。
 
@@ -502,7 +508,12 @@ PostgreSQL 行与 blob 目录是同一份状态的两半，**必须一起备份/
 | 现象 | 可能原因 | 处理 |
 | --- | --- | --- |
 | `/readyz` 503 | PostgreSQL 不可达或 blob 目录不可写 | 查 `doctor`、DSN、目录权限与磁盘空间 |
-| 全部请求 401 `invalid_token` | issuer/audience 与 teamusers 不一致，或 JWKS 不可达 | 核对 `TEAMUSERS_ISSUER/AUDIENCE` 与网络；`doctor` 检查 JWKS |
+| 401 `invalid_token_missing` | 客户端没带 `Authorization` 头 | 客户端补 header（`Bearer <access token>`）；同 request id 的 `WARN` 记录给出方法与路径 |
+| 401 `invalid_token_expired` | 访问令牌过期（teamusers 默认 10 分钟 TTL） | 重新登录或刷新令牌 |
+| 401 `invalid_token_audience` / `_issuer` | `FILEHOUSE_TEAMUSERS_AUDIENCE`/`_ISSUER` 与 teamusers 签发的 `aud`/`iss` 不一致 | 核对 teamusers 的 `TEAMUSERS_TOKEN_AUDIENCE`（issuer 默认 `teamusers`） |
+| 401 `invalid_token_jwks` | JWKS 拉取失败 | 核对 `FILEHOUSE_TEAMUSERS_BASE_URL` 与网络；`doctor` 检查 JWKS 可达性 |
+| 401 `invalid_token_signature` | 令牌不是本部署签发（teamusers 密钥目录被重建/换了节点） | 重新登录；确认 teamusers 的 `TEAMUSERS_KEY_DIR` 稳定且多副本共享 |
+| 401 兜底 `invalid_token` | 未归类的验证失败 | 用响应 `instance` 查同 request id 的 `WARN` 记录中的 `error` 文本 |
 | 403 `insufficient_permissions` | 主体缺少对应权限键 | 看响应 `reason` 中的尝试键，在 teamusers 侧补授权 |
 | 403 `presign_invalid` | 链接被截断/篡改、方法或对象不匹配 | 重新签发；确认 `sig` 查询参数完整 |
 | 410 `presign_expired` | 链接过期 | 重新签发或调大 TTL 上限 |

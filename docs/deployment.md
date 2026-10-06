@@ -274,7 +274,10 @@ curl -sS https://files.example.com/files/api/v1/buckets/smoke/objects/hello.txt 
   `/readyz` 额外验证 PostgreSQL（`SELECT 1`）与 blob 目录可写性，返回 503 时不代表进程
   需要重启，可用于流量门控或告警。
 - 日志是单行 JSON（`slog`），字段含 `service`、`node_id`、`version`、`request_id`；
-  访问日志含 `method`、`path`、`status`、`bytes`、`duration_ms`、`client_ip`。
+  访问日志含 `method`、`path`、`status`、`bytes`、`duration_ms`、`client_ip`。健康检查
+  （`/healthz`、`/readyz`）的访问日志为 `debug` 级，默认不输出，避免探针轮询淹没业务日志。
+  令牌被拒时另有一条 `WARN` `iam: access token rejected`，带 `detail`（与响应 `detail` 一致）、`method`、
+  `path`、`request_id` 与脱敏后的错误文本，可用响应 `instance` 直接关联。
   令牌、`client_secret`、DSN 口令与预签名 HMAC 密钥都不会出现在日志或 `status` 输出中。
 
 ## 7. 信任代理与客户端地址
@@ -312,7 +315,7 @@ curl -sS https://files.example.com/files/api/v1/buckets/smoke/objects/hello.txt 
 | 现象 | 可能原因 | 处理 |
 | --- | --- | --- |
 | 启动即退出，日志 `either a teamusers service token or a client id with client secret is required` | 未配置服务凭据 | 配置 `FILEHOUSE_TEAMUSERS_CLIENT_ID` + `_CLIENT_SECRET`（推荐），或临时用 `_SERVICE_TOKEN` |
-| 请求返回 `401 invalid_token` | 令牌过期、`aud`/`iss` 不匹配、JWKS 不可达 | 核对 `FILEHOUSE_TEAMUSERS_AUDIENCE`/`_ISSUER` 与 teamusers 的 `TEAMUSERS_TOKEN_AUDIENCE`；`doctor` 会检查 JWKS 可达性 |
+| 请求返回 `401` | 令牌缺失/过期/格式错误，或 `aud`/`iss` 不匹配、JWKS 不可达、签名不匹配 | 先看响应 `detail` 的分类码（`invalid_token_missing`/`_malformed`/`_expired`/`_audience`/`_issuer`/`_signature`/`_claims`/`_jwks`），再用 `instance` 查同 request id 的 `WARN` 日志；`aud`/`iss` 需与 teamusers 的 `TEAMUSERS_TOKEN_AUDIENCE` 及 issuer 对齐，`doctor` 检查 JWKS 可达性 |
 | 请求返回 `403 insufficient_permissions` | 角色未绑定对应权限键；或权限缓存未命中且 teamusers 不可达/服务凭据失效（此时 `reason` 含 `authorization service unavailable`） | 前者按 `reason` 列出的权限键在 teamusers 侧补绑定；后者检查 `FILEHOUSE_TEAMUSERS_BASE_URL` 与 client_secret，`doctor` 的 `iam` 行给出结论 |
 | 请求返回 `503 iam_unavailable` | 授权组件不可用：authorizer 未就绪、列举桶或 `/api/v1/me/permissions` 查询权限失败、预签名兑换时无法读取权限 | 检查 teamusers 连通性与服务凭据；`doctor` 的 `iam` 行给出结论 |
 | `/readyz` 返回 503 | PostgreSQL 不可用或 blob 目录不可写 | 检查 DSN、连接数与目录权限/磁盘空间 |

@@ -10,7 +10,13 @@ import (
 	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
 )
 
-const readinessTimeout = 5 * time.Second
+const (
+	readinessTimeout = 5 * time.Second
+	// pathHealthz and pathReadyz are the public probes. The access log lowers
+	// them to debug level because a host polls them continuously.
+	pathHealthz = "/healthz"
+	pathReadyz  = "/readyz"
+)
 
 type statusResponse struct {
 	Status string `json:"status"`
@@ -19,8 +25,8 @@ type statusResponse struct {
 // routePublic registers the dependency reporting endpoints: liveness always
 // answers 200, readiness checks PostgreSQL and the blob directory.
 func (s *Server) routePublic(r chi.Router) {
-	r.Get("/healthz", s.handleHealthz)
-	r.Get("/readyz", s.handleReadyz)
+	r.Get(pathHealthz, s.handleHealthz)
+	r.Get(pathReadyz, s.handleReadyz)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {

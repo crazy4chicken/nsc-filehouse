@@ -73,6 +73,71 @@ const (
 // partially constructed Authorizer. Every decision path fails closed.
 var errAuthorizerUnavailable = errors.New("iam: authorizer is not configured")
 
+// The 401 detail codes classify why a bearer token was rejected. They are the
+// stable, documented values of the problem document's detail field: the generic
+// invalid_token is the fallback for a failure the classifier does not know, so
+// a client can always switch on the invalid_token prefix.
+const (
+	// DetailInvalidToken is the generic, unclassified rejection.
+	DetailInvalidToken = "invalid_token"
+	// DetailTokenMissing means the request carried no Authorization header.
+	DetailTokenMissing = "invalid_token_missing"
+	// DetailTokenMalformed means the header was not a single bearer token, or
+	// the token was not a parseable JWS.
+	DetailTokenMalformed = "invalid_token_malformed"
+	// DetailTokenExpired means the token's exp claim has passed.
+	DetailTokenExpired = "invalid_token_expired"
+	// DetailTokenAudience means the token's aud claim is not this service.
+	DetailTokenAudience = "invalid_token_audience"
+	// DetailTokenIssuer means the token's iss claim is not the expected issuer.
+	DetailTokenIssuer = "invalid_token_issuer"
+	// DetailTokenSignature means the signature did not verify against the JWKS.
+	DetailTokenSignature = "invalid_token_signature"
+	// DetailTokenClaims means a well-formed token carried invalid claim values.
+	DetailTokenClaims = "invalid_token_claims"
+	// DetailTokenJWKS means the JWKS document could not be fetched or cached,
+	// which is a dependency problem rather than a client mistake.
+	DetailTokenJWKS = "invalid_token_jwks"
+)
+
+// DetailForVerificationError classifies one SDK verifier error. The SDK reports
+// free-form messages, so the mapping matches their distinctive fragments and
+// falls back to DetailInvalidToken; classification never changes the outcome,
+// every classified request is still rejected.
+func DetailForVerificationError(err error) string {
+	if err == nil {
+		return DetailInvalidToken
+	}
+	message := err.Error()
+	switch {
+	// jwx validates exp/nbf/iat/iss inside jwt.Parse when the SDK asks for
+	// validation, so those failures arrive as `"<claim>" not satisfied` before
+	// the SDK's own claim checks run.
+	case strings.Contains(message, "access token is expired"), strings.Contains(message, `"exp" not satisfied`):
+		return DetailTokenExpired
+	case strings.Contains(message, "invalid access token issuer"), strings.Contains(message, `"iss" not satisfied`):
+		return DetailTokenIssuer
+	case strings.Contains(message, "invalid access token audience"), strings.Contains(message, `"aud" not satisfied`):
+		return DetailTokenAudience
+	case strings.Contains(message, "could not verify message"):
+		return DetailTokenSignature
+	case strings.Contains(message, "JWKS"):
+		return DetailTokenJWKS
+	case strings.Contains(message, "signature"):
+		return DetailTokenSignature
+	case strings.Contains(message, "failed to parse"), strings.Contains(message, "access token is empty"):
+		return DetailTokenMalformed
+	case strings.Contains(message, `"nbf" not satisfied`),
+		strings.Contains(message, `"iat" not satisfied`),
+		strings.Contains(message, "required claim"),
+		strings.Contains(message, "invalid access token "),
+		strings.Contains(message, "access token subject is missing"):
+		return DetailTokenClaims
+	default:
+		return DetailInvalidToken
+	}
+}
+
 // verbActions is the set of permission actions in the filehouse catalog.
 var verbActions = map[string]struct{}{
 	"read":   {},
@@ -240,24 +305,30 @@ func (a *Authorizer) Close() {
 }
 
 // Authenticate verifies the request bearer token and stores the resulting
-// claims in the request context. Failures are answered with the RFC 9457
-// problem document used by teamusers: title Unauthorized, detail invalid_token.
+// claims in the request context. Every rejection answers the RFC 9457 problem
+// document used by teamusers - title Unauthorized - with a classified
+// invalid_token detail (see the Detail* constants) and writes one matching WARN
+// record carrying the request id, so the instance field of the response and the
+// log line can be correlated. The raw token never reaches the log.
 func (a *Authorizer) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := bearerToken(r.Header.Get("Authorization"))
+		header := strings.TrimSpace(r.Header.Get("Authorization"))
+		if header == "" {
+			a.rejectToken(w, r, DetailTokenMissing, "authorization header is missing")
+			return
+		}
+		token, ok := bearerToken(header)
 		if !ok {
-			writeUnauthorized(w, r, "invalid_token")
+			a.rejectToken(w, r, DetailTokenMalformed, "authorization header is not a single bearer token")
 			return
 		}
 		if a == nil || a.verifier == nil {
-			a.logVerificationFailure(r, "authorizer is not configured")
-			writeUnauthorized(w, r, "invalid_token")
+			a.rejectToken(w, r, DetailInvalidToken, "authorizer is not configured")
 			return
 		}
 		claims, err := a.verifier.Verify(r.Context(), token)
 		if err != nil {
-			a.logVerificationFailure(r, redactSecret(err.Error(), token))
-			writeUnauthorized(w, r, "invalid_token")
+			a.rejectToken(w, r, DetailForVerificationError(err), redactSecret(err.Error(), token))
 			return
 		}
 		// The verifier only accepts the "user" and "service" subject kinds, so
@@ -265,6 +336,12 @@ func (a *Authorizer) Authenticate(next http.Handler) http.Handler {
 		// failed verification.
 		next.ServeHTTP(w, r.WithContext(iam.WithClaims(r.Context(), claims)))
 	})
+}
+
+// rejectToken logs one rejection and answers it with the classified 401 detail.
+func (a *Authorizer) rejectToken(w http.ResponseWriter, r *http.Request, detail, message string) {
+	a.logVerificationFailure(r, detail, message)
+	writeUnauthorized(w, r, detail)
 }
 
 // Claims returns the verified claims stored by Authenticate.
@@ -460,7 +537,7 @@ func bearerToken(header string) (string, bool) {
 
 // writeUnauthorized answers an unauthenticated or unverifiable request with the
 // problem document shared by the whole service: type about:blank, title
-// Unauthorized, detail invalid_token.
+// Unauthorized, and one of the classified invalid_token details.
 //
 // The instance is the request id the httpx request-id middleware installs in
 // the request context. Because the middleware is owned by another layer, the
@@ -479,12 +556,20 @@ func writeUnauthorized(w http.ResponseWriter, r *http.Request, detail string) {
 }
 
 // logVerificationFailure logs a verification failure after removing the raw
-// token, so credential material can never reach the log.
-func (a *Authorizer) logVerificationFailure(r *http.Request, message string) {
-	if a == nil || a.log == nil {
+// token, so credential material can never reach the log. The record carries the
+// same request id as the instance field of the problem document, plus the
+// classified detail, so an operator can go from a 401 response to its cause.
+func (a *Authorizer) logVerificationFailure(r *http.Request, detail, message string) {
+	if a == nil || a.log == nil || r == nil {
 		return
 	}
-	a.log.WarnContext(r.Context(), "iam: access token rejected", "error", message)
+	a.log.WarnContext(r.Context(), "iam: access token rejected",
+		"detail", detail,
+		"error", message,
+		"method", r.Method,
+		"path", r.URL.Path,
+		"request_id", httpx.RequestIDFromContext(r),
+	)
 }
 
 // redactSecret replaces the secret with a placeholder if a message contains it.

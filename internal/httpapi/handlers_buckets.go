@@ -12,6 +12,7 @@ import (
 
 	"github.com/crazy4chicken/nsc-filehouse/internal/config"
 	"github.com/crazy4chicken/nsc-filehouse/internal/httpx"
+	"github.com/crazy4chicken/nsc-filehouse/internal/iamauth"
 	"github.com/crazy4chicken/nsc-filehouse/internal/store"
 )
 
@@ -44,12 +45,12 @@ var bucketNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 // the 401 problem itself when the request carries no usable bearer token.
 func (s *Server) claimsFor(w http.ResponseWriter, r *http.Request) (iam.Claims, bool) {
 	if s.Authorizer() == nil {
-		httpx.WriteProblem(w, r, http.StatusUnauthorized, "", "invalid_token")
+		httpx.WriteProblem(w, r, http.StatusUnauthorized, "", iamauth.DetailInvalidToken)
 		return iam.Claims{}, false
 	}
 	claims, ok := s.Authorizer().Claims(r)
 	if !ok {
-		httpx.WriteProblem(w, r, http.StatusUnauthorized, "", "invalid_token")
+		httpx.WriteProblem(w, r, http.StatusUnauthorized, "", iamauth.DetailInvalidToken)
 		return iam.Claims{}, false
 	}
 	return claims, true
