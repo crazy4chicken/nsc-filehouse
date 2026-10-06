@@ -150,8 +150,10 @@ func serviceTokenSource(o Options, hc *http.Client) func() (string, error) {
 // combines them.
 //
 // The SDK client is intentionally left in its default mode: Allow evaluates
-// the local permission cache first and falls back to POST /authz/check when
-// the cache is unavailable, which is the fast path required by the contract.
+// the local permission cache first and falls back to POST /authz/check when a
+// lookup fails for a transport or server reason. A missing, legacy or
+// malformed snapshot is not retried remotely: the SDK rejects it as an invalid
+// snapshot, so this service denies instead of allowing.
 func NewAuthorizer(o Options) (*Authorizer, error) {
 	base := strings.TrimRight(strings.TrimSpace(o.BaseURL), "/")
 	if base == "" {
@@ -337,9 +339,9 @@ func (a *Authorizer) DecideSubject(ctx context.Context, subject, kind, team stri
 //
 // A cached entry is only reused while its perm_ver matches the token, so the
 // result reflects the authoritative permission set after a change. Grants that
-// carry an ABAC condition are returned as plain permission keys without their
-// condition; consumers that must not over-authorize should re-check the
-// specific request with Decide.
+// carry an ABAC condition, and grants scoped to one team (Grant.TeamID), are
+// returned as plain permission keys without that qualifier; consumers that must
+// not over-authorize should re-check the specific request with Decide.
 func (a *Authorizer) Grants(ctx context.Context, claims iam.Claims) ([]iam.Permission, error) {
 	if a == nil || a.permissions == nil {
 		return nil, errAuthorizerUnavailable

@@ -2,6 +2,8 @@ github.com/crazy4chicken/nsc-teamusers/apidocs/go v0.1.0 h1:BvXHiKpvbhwZnzp3BDkz
 github.com/crazy4chicken/nsc-teamusers/apidocs/go v0.1.0/go.mod h1:ESixJ5oyAyJaYtEWYBVuGNiFWGNlpKjabLWKPX+tcRA=
 github.com/crazy4chicken/nsc-teamusers/sdk/go v0.2.0 h1:MCP+lnIBtAJO78R+X6WtIZIQ+RGuJKS6iE7fz7NNvFc=
 github.com/crazy4chicken/nsc-teamusers/sdk/go v0.2.0/go.mod h1:BrI3dYo89hgHyHV4Bd6efxMx7r8hQB1in+MkhKI6h10=
+github.com/crazy4chicken/nsc-teamusers/sdk/go v0.4.0 h1:WCVPXs5qJzhWKVjuww3cyJcl0t7rPetBjixEbif5DQs=
+github.com/crazy4chicken/nsc-teamusers/sdk/go v0.4.0/go.mod h1:BrI3dYo89hgHyHV4Bd6efxMx7r8hQB1in+MkhKI6h10=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 h1:5RVFMOWjMyRy8cARdy79nAmgYw3hK/4HUq48LQ6Wwqo=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1/go.mod h1:ZXNYxsqcloTdSy/rNShjYzMhyjf0LaoftYK0p+A3h40=

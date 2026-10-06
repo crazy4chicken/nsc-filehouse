@@ -189,7 +189,7 @@ func newPermissionsFixture(t *testing.T, permVer int64, keys ...string) *permiss
 	for _, key := range keys {
 		grants = append(grants, map[string]string{"key": key})
 	}
-	body, err := json.Marshal(map[string]any{"user_id": "u1", "perm_ver": permVer, "grants": grants})
+	body, err := json.Marshal(map[string]any{"version": 2, "user_id": "u1", "perm_ver": permVer, "grants": grants})
 	if err != nil {
 		t.Fatalf("marshal fixture response: %v", err)
 	}

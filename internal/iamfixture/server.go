@@ -5,10 +5,14 @@
 // endpoints the official teamusers Go SDK talks to:
 //
 //	GET  /.well-known/jwks.json
-//	GET  /authz/permissions/{userID}
+//	GET  /authz/permissions/{userID}?version=2
 //	POST /authz/check
 //	POST /auth/client-credentials
 //	POST /permissions/
+//
+// The permission endpoint mirrors the server contract the SDK relies on: only
+// the version 2 snapshot is served, and a missing or legacy version answers
+// HTTP 400 instead of a flattened response.
 //
 // It mints compact EdDSA JWTs with the standard library only and evaluates the
 // subset of the teamusers permission semantics the filehouse contract
@@ -257,6 +261,12 @@ func (s *Server) handlePermissions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "service token is required"})
 		return
 	}
+	// The SDK requests the v2 snapshot and fails closed on any other version,
+	// so a legacy request is rejected the way teamusers rejects it.
+	if r.URL.Query().Get("version") != "2" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "unsupported permissions snapshot version"})
+		return
+	}
 	userID := r.PathValue("userID")
 	s.mu.Lock()
 	state := s.grants[userID]
@@ -264,10 +274,11 @@ func (s *Server) handlePermissions(w http.ResponseWriter, r *http.Request) {
 	grants := make([]Grant, len(state.grants))
 	copy(grants, state.grants)
 	writeJSON(w, http.StatusOK, struct {
+		Version int     `json:"version"`
 		UserID  string  `json:"user_id"`
 		PermVer int64   `json:"perm_ver"`
 		Grants  []Grant `json:"grants"`
-	}{UserID: userID, PermVer: state.permVer, Grants: grants})
+	}{Version: 2, UserID: userID, PermVer: state.permVer, Grants: grants})
 }
 
 // checkRequest is the body of POST /authz/check. It carries the fields the

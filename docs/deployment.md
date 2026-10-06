@@ -88,6 +88,13 @@ curl -sS -X POST "$IAM/bindings/" \
 本服务用 `FILEHOUSE_TEAMUSERS_AUDIENCE` 校验它；两者必须一致（默认都是
 `teamusers`）。团队内其他服务同理。
 
+**(e) 对齐服务端版本**：本服务使用的 Go SDK 只接受 v2 权限快照
+（`GET /authz/permissions/{userID}?version=2`）。teamusers 低于 v0.4.0 会返回不带
+`version` 的旧快照，被 SDK 判为 `invalid permission snapshot` 并 fail-closed——
+表现为请求普遍 `403 insufficient_permissions`、列举/`me/permissions` 返回
+`503 iam_unavailable`。服务端需 ≥ v0.4.0，§3 模板已 pin v0.4.1，须与 filehouse
+成对升级。
+
 ## 2. 构建与发布
 
 手动构建发布产物：
@@ -126,11 +133,13 @@ services:
   teamusers:
     source:
       # 推送 v* 标签后由 release workflow 产出 teamusers_<version>_<arch>.zip。
-      # 这里 pin 的是已发布的 v0.2.1，摘要取自 GitHub release API：
-      #   x64   c15342405ac6bda366837ab8c446d0986ab6ae5f33cc149338bcf183f08d25d6
-      #   arm64 153b3f087e1906cf01b60db68d66f1faf55d9eab912daa095946f1d7e252e8d9
-      release: "github:crazy4chicken/nsc-teamusers@v0.2.1"
-      sha256: "c15342405ac6bda366837ab8c446d0986ab6ae5f33cc149338bcf183f08d25d6"
+      # 这里 pin 的是已发布的 v0.4.1，摘要取自 GitHub release API：
+      #   x64   100301bd12718e8018e0ab0ab44117c9fe046622228d27a8199e42ddc8dec6c4
+      #   arm64 f855674b6a9ca8837ae5a4ffa0a6f6fd1ac549024714c6d4808b87600293a1d9
+      # v0.2.x 只提供旧版权限快照，与 filehouse 的 SDK（要求 ?version=2）不兼容，
+      # 两者必须成对升级（见 §1.2(e)）。
+      release: "github:crazy4chicken/nsc-teamusers@v0.4.1"
+      sha256: "100301bd12718e8018e0ab0ab44117c9fe046622228d27a8199e42ddc8dec6c4"
     args: ["run"]
     env:
       TEAMUSERS_CONNECTION_STRING: "postgres://teamusers:<password>@10.0.0.2:5432/teamusers?sslmode=require"
