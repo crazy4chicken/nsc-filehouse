@@ -445,6 +445,69 @@ func TestUnauthenticatedRequestsRejected(t *testing.T) {
 		http.StatusUnauthorized, "invalid_token_expired")
 }
 
+// TestBucketOwnerAndTeamAssignment covers the assignment contract: a plain
+// writer may attach its own bucket to a team at creation and may re-send the
+// team it already has, but changing the owner, the owner kind or the team needs
+// the platform-wide filehouse:manage:any grant, and so does creating a bucket
+// for another owner.
+func TestBucketOwnerAndTeamAssignment(t *testing.T) {
+	h := newHarness(t)
+	writer := h.authorize("alice", iamfixture.Grant{Key: "filehouse:write:own"})
+	manager := h.authorize("amy",
+		iamfixture.Grant{Key: "filehouse:write:own"},
+		iamfixture.Grant{Key: "filehouse:manage:any"},
+	)
+
+	// A team is attachable at creation: the write decision runs against the
+	// caller's own prospective bucket.
+	created := h.mustDo(t, http.MethodPost, "/api/v1/buckets", writer,
+		[]byte(`{"name":"assign-team","team_id":"core"}`), nil)
+	requireStatus(t, created, http.StatusCreated)
+	if bucket := decodeJSON[store.Bucket](t, created); bucket.OwnerID != "alice" || bucket.TeamID != "core" {
+		t.Fatalf("created bucket = %+v, want owner alice in team core", bucket)
+	}
+
+	// Re-sending the team the bucket already has changes nothing.
+	requireStatus(t, h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-team", writer,
+		[]byte(`{"team_id":"core"}`), nil), http.StatusOK)
+
+	// Moving the bucket to another team or another owner is a scope change.
+	requireProblem(t, h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-team", writer,
+		[]byte(`{"team_id":"other"}`), nil), http.StatusForbidden, "insufficient_permissions")
+	requireProblem(t, h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-team", writer,
+		[]byte(`{"owner":"bob"}`), nil), http.StatusForbidden, "insufficient_permissions")
+	requireProblem(t, h.mustDo(t, http.MethodPost, "/api/v1/buckets", writer,
+		[]byte(`{"name":"assign-foreign","owner":"bob"}`), nil), http.StatusForbidden, "insufficient_permissions")
+
+	// The manager holds write:own plus the platform-wide manage grant.
+	requireStatus(t, h.mustDo(t, http.MethodPost, "/api/v1/buckets", manager,
+		[]byte(`{"name":"assign-managed"}`), nil), http.StatusCreated)
+
+	team := h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-managed", manager,
+		[]byte(`{"team_id":"core"}`), nil)
+	requireStatus(t, team, http.StatusOK)
+	if bucket := decodeJSON[store.Bucket](t, team); bucket.TeamID != "core" {
+		t.Fatalf("team_id = %q, want core", bucket.TeamID)
+	}
+
+	reassigned := h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-managed", manager,
+		[]byte(`{"owner":"bob","owner_kind":"service","team_id":""}`), nil)
+	requireStatus(t, reassigned, http.StatusOK)
+	if bucket := decodeJSON[store.Bucket](t, reassigned); bucket.OwnerID != "bob" || bucket.OwnerKind != "service" || bucket.TeamID != "" {
+		t.Fatalf("reassigned bucket = %+v, want owner bob (service) without a team", bucket)
+	}
+
+	// The reassignment moved the bucket out of the manager's own scope.
+	requireProblem(t, h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-managed", manager,
+		[]byte(`{"description":"out of scope"}`), nil), http.StatusForbidden, "insufficient_permissions")
+
+	// Invalid assignment payloads are rejected before any decision.
+	requireProblem(t, h.mustDo(t, http.MethodPatch, "/api/v1/buckets/assign-managed", manager,
+		[]byte(`{"owner":"  "}`), nil), http.StatusBadRequest, "invalid_request")
+	requireProblem(t, h.mustDo(t, http.MethodPost, "/api/v1/buckets", manager,
+		[]byte(`{"name":"assign-bad-kind","owner_kind":"robot"}`), nil), http.StatusBadRequest, "invalid_request")
+}
+
 // TestUnrelatedPermissionForbidden covers (2): a subject holding only an
 // unrelated grant cannot read a foreign bucket.
 func TestUnrelatedPermissionForbidden(t *testing.T) {

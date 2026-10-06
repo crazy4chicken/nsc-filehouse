@@ -76,13 +76,19 @@ func (s *Store) ListBuckets(ctx context.Context, f BucketFilter) ([]Bucket, stri
 	return page, next, nil
 }
 
-// UpdateBucket rewrites the mutable bucket attributes (description and quotas).
+// UpdateBucket rewrites the mutable bucket attributes: the owner, the team
+// scope, the description and the quotas. Name, id and the usage counters are
+// immutable here.
 func (s *Store) UpdateBucket(ctx context.Context, b Bucket) (Bucket, error) {
+	if b.OwnerKind == "" {
+		return Bucket{}, errors.New("bucket owner kind is required")
+	}
 	row := s.pool.QueryRow(ctx, `UPDATE buckets
-		SET description = $2, quota_bytes = $3, quota_objects = $4, updated_at = now()
+		SET owner_id = $2, owner_kind = $3, team_id = $4, description = $5,
+			quota_bytes = $6, quota_objects = $7, updated_at = now()
 		WHERE id = $1
 		RETURNING `+bucketColumns,
-		b.ID, b.Description, b.QuotaBytes, b.QuotaObjects)
+		b.ID, b.OwnerID, b.OwnerKind, b.TeamID, b.Description, b.QuotaBytes, b.QuotaObjects)
 	out, err := scanBucket(row)
 	if err != nil {
 		return Bucket{}, classify(err)

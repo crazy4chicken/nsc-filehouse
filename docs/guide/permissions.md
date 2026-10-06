@@ -88,12 +88,16 @@ The verb depends on the operation, not only on the HTTP method:
 | Create a bucket; upload an object or part; complete or abort an upload; patch a bucket | `write` |
 | Delete an object or an empty bucket | `delete` |
 | Mint a presigned URL | `share` **and** `read` (GET/HEAD) or `write` (PUT) |
-| Admin statistics, quota management, garbage collection | `manage:any` only |
+| Admin statistics, quota management, garbage collection, bucket owner/team assignment | `manage:any` only |
 
 A few operations add a second requirement:
 
 - `PATCH /api/v1/buckets/{bucket}` needs `write` on the bucket, and additionally
-  `filehouse:manage:any` when the body changes `quota_bytes` or `quota_objects`.
+  `filehouse:manage:any` when the body changes `quota_bytes`, `quota_objects`,
+  `owner`, `owner_kind` or `team_id` - the last three move the bucket between
+  authorization scopes. Setting a field to the value it already holds is not a
+  change. `POST /api/v1/buckets` needs the same grant when the body names
+  another subject as `owner`.
 - Acting on **another subject's** multipart upload (inspect, write parts,
   complete, abort) requires `write`/`read` on the bucket *and* the `:any` scope
   of that verb.

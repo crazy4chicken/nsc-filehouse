@@ -6,7 +6,7 @@ Use this API when a workload needs to store and serve unstructured objects while
 
 - **Public system plane**: `GET /healthz` and `GET /readyz` are unauthenticated probes. `/healthz` never touches dependencies and always answers `200 {"status":"ok"}`; `/readyz` checks PostgreSQL and blob-directory writability and answers `200 {"status":"ready"}` or `503 {"status":"unavailable"}`.
 - **Authenticated data plane**: every other route under `/api/v1/*` requires a teamusers-issued bearer JWT. It covers buckets, objects, multipart uploads, usage, self-service permissions, and presigned-URL minting.
-- **Administrative plane**: `/api/v1/admin/*` (platform stats, subject quotas, manual garbage collection) requires `filehouse:manage:any`. Setting quota fields of a bucket through `PATCH /api/v1/buckets/{bucket}` needs it too.
+- **Administrative plane**: `/api/v1/admin/*` (platform stats, subject quotas, manual garbage collection) requires `filehouse:manage:any`. Setting the quota fields of a bucket, reassigning its `owner`, `owner_kind` or `team_id` through `PATCH /api/v1/buckets/{bucket}`, or creating a bucket owned by another subject needs it too.
 - **Presign redemption plane**: `/presign/{bucket}/*` is public. The HMAC-SHA256 token in the `sig` query parameter is the only credential; no `Authorization` header is involved. Links are minted on the authenticated plane by `POST /api/v1/presign`.
 
 The per-tag reference pages are native VitePress pages derived at build time from the canonical OpenAPI document - [System](./reference/system), [Buckets](./reference/buckets), [Objects](./reference/objects), [Uploads](./reference/uploads), [Presign](./reference/presign), [Self-service](./reference/self-service), and [Admin](./reference/admin). Do not hand-edit generated reference output.
@@ -31,7 +31,7 @@ Access tokens are bearer JWTs issued by teamusers and verified locally against t
 | Anonymous client | None | `GET /healthz`, `GET /readyz` |
 | User bearer | `Authorization: Bearer <access-token>` (`kind: user`) | buckets, objects, uploads, `/api/v1/usage`, `/api/v1/me/permissions` |
 | Service bearer | `Authorization: Bearer <service-access-token>` (`kind: service`) | the same `/api/v1/*` data routes |
-| Admin subject | either bearer plus `filehouse:manage:any` | `/api/v1/admin/*`; quota fields of `PATCH /api/v1/buckets/{bucket}` |
+| Admin subject | either bearer plus `filehouse:manage:any` | `/api/v1/admin/*`; quota, `owner`, `owner_kind` and `team_id` changes of `PATCH /api/v1/buckets/{bucket}`; creating a bucket for another `owner` |
 | Presign link holder | none - the `sig` query token is the only credential | `GET`/`HEAD`/`PUT /presign/{bucket}/*` |
 
 Minting a presigned URL (`POST /api/v1/presign`) requires `filehouse:share:<scope>` and, on the same bucket, the verb matching the link method: `read` for `GET`/`HEAD` and `write` for `PUT`.

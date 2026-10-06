@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	iam "github.com/crazy4chicken/nsc-teamusers/sdk/go"
 	"github.com/go-chi/chi/v5"
@@ -22,6 +23,10 @@ const (
 	verbRead   = "read"
 	verbWrite  = "write"
 	verbDelete = "delete"
+
+	// verbManage is the platform-wide action of the admin plane and of the
+	// bucket owner, owner-kind and team assignment checks.
+	verbManage = "manage"
 
 	scopeOwn  = "own"
 	scopeTeam = "team"
@@ -222,16 +227,28 @@ type bucketPage struct {
 	NextCursor string         `json:"next_cursor"`
 }
 
+// subjectKindUser and subjectKindService are the owner kinds a bucket may
+// carry; they mirror the verified token kinds.
+const (
+	subjectKindUser    = "user"
+	subjectKindService = "service"
+)
+
 type createBucketRequest struct {
-	Name         string `json:"name"`
-	TeamID       string `json:"team_id"`
-	Description  string `json:"description"`
-	QuotaBytes   *int64 `json:"quota_bytes"`
-	QuotaObjects *int64 `json:"quota_objects"`
+	Name         string  `json:"name"`
+	TeamID       string  `json:"team_id"`
+	Owner        *string `json:"owner"`
+	OwnerKind    *string `json:"owner_kind"`
+	Description  string  `json:"description"`
+	QuotaBytes   *int64  `json:"quota_bytes"`
+	QuotaObjects *int64  `json:"quota_objects"`
 }
 
-// handleCreateBucket creates a bucket owned by the caller. Write permission is
-// decided against the prospective bucket: owner = caller, team = body team.
+// handleCreateBucket creates a bucket. It is owned by the caller unless the
+// body names another owner (owner, with an optional owner_kind defaulting to
+// user), which requires the platform-wide manage grant because it places the
+// bucket outside the caller's own scope. Write permission is decided against
+// the caller's prospective bucket: owner = caller, team = team_id.
 func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 	claims, ok := s.claimsFor(w, r)
 	if !ok {
@@ -249,12 +266,34 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
 		return
 	}
+	ownerID := claims.Subject
+	foreignOwner := false
+	if body.Owner != nil {
+		ownerID = strings.TrimSpace(*body.Owner)
+		if ownerID == "" {
+			httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
+			return
+		}
+		foreignOwner = ownerID != claims.Subject
+	}
+	ownerKind := subjectKind(claims)
+	if foreignOwner {
+		ownerKind = subjectKindUser
+	}
+	if body.OwnerKind != nil {
+		ownerKind = strings.ToLower(strings.TrimSpace(*body.OwnerKind))
+		if ownerKind != subjectKindUser && ownerKind != subjectKindService {
+			httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
+			return
+		}
+	}
+	teamID := strings.TrimSpace(body.TeamID)
 	limits := s.limits()
 	bucket := store.Bucket{
 		Name:         body.Name,
-		OwnerID:      claims.Subject,
-		OwnerKind:    subjectKind(claims),
-		TeamID:       body.TeamID,
+		OwnerID:      ownerID,
+		OwnerKind:    ownerKind,
+		TeamID:       teamID,
 		Description:  body.Description,
 		QuotaBytes:   limits.BucketDefaultQuotaBytes,
 		QuotaObjects: limits.BucketDefaultQuotaObjects,
@@ -267,10 +306,13 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 	}
 	resource := iam.Resource{
 		OwnerID: claims.Subject,
-		TeamID:  body.TeamID,
+		TeamID:  teamID,
 		Attrs:   map[string]any{"bucket": body.Name},
 	}
 	if !s.authorize(w, r, claims, verbWrite, resource) {
+		return
+	}
+	if foreignOwner && !s.decideAny(w, r, claims, verbManage) {
 		return
 	}
 	created, err := s.Store().CreateBucket(r.Context(), bucket)
@@ -306,11 +348,17 @@ type patchBucketRequest struct {
 	Description  *string `json:"description"`
 	QuotaBytes   *int64  `json:"quota_bytes"`
 	QuotaObjects *int64  `json:"quota_objects"`
+	TeamID       *string `json:"team_id"`
+	Owner        *string `json:"owner"`
+	OwnerKind    *string `json:"owner_kind"`
 }
 
 // handlePatchBucket updates the mutable bucket attributes. Description changes
 // require write on the bucket; quota changes additionally require the platform
 // wide manage grant, because a quota bounds every future writer of the bucket.
+// Changing the owner, the owner kind or the team likewise requires that grant:
+// those fields move the bucket between authorization scopes. Setting a field to
+// the value it already holds changes nothing and needs no manage grant.
 func (s *Server) handlePatchBucket(w http.ResponseWriter, r *http.Request) {
 	claims, ok := s.claimsFor(w, r)
 	if !ok {
@@ -324,7 +372,8 @@ func (s *Server) handlePatchBucket(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequestBody(w, r, &body) {
 		return
 	}
-	if body.Description == nil && body.QuotaBytes == nil && body.QuotaObjects == nil {
+	if body.Description == nil && body.QuotaBytes == nil && body.QuotaObjects == nil &&
+		body.TeamID == nil && body.Owner == nil && body.OwnerKind == nil {
 		httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
 		return
 	}
@@ -332,15 +381,39 @@ func (s *Server) handlePatchBucket(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
 		return
 	}
+	updated := bucket
+	scopeChanged := false
+	if body.TeamID != nil {
+		teamID := strings.TrimSpace(*body.TeamID)
+		scopeChanged = scopeChanged || teamID != bucket.TeamID
+		updated.TeamID = teamID
+	}
+	if body.Owner != nil {
+		ownerID := strings.TrimSpace(*body.Owner)
+		if ownerID == "" {
+			httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
+			return
+		}
+		scopeChanged = scopeChanged || ownerID != bucket.OwnerID
+		updated.OwnerID = ownerID
+	}
+	if body.OwnerKind != nil {
+		ownerKind := strings.ToLower(strings.TrimSpace(*body.OwnerKind))
+		if ownerKind != subjectKindUser && ownerKind != subjectKindService {
+			httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
+			return
+		}
+		scopeChanged = scopeChanged || ownerKind != bucket.OwnerKind
+		updated.OwnerKind = ownerKind
+	}
 	if !s.authorize(w, r, claims, verbWrite, bucketResource(bucket, nil)) {
 		return
 	}
-	if body.QuotaBytes != nil || body.QuotaObjects != nil {
-		if !s.decideAny(w, r, claims, "manage") {
+	if body.QuotaBytes != nil || body.QuotaObjects != nil || scopeChanged {
+		if !s.decideAny(w, r, claims, verbManage) {
 			return
 		}
 	}
-	updated := bucket
 	if body.Description != nil {
 		updated.Description = *body.Description
 	}

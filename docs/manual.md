@@ -105,7 +105,8 @@ token 只证明身份，不携带权限；权限永远由 teamusers 的权限数
 ### 2.4 管理面空资源语义
 
 管理面路由（`/api/v1/admin/*`）用**空资源**调用决策：没有 owner/team/attrs，级联只会尝试 `:any` 键——即
-只有 `manage:any`（或带 `*` 的等价授权）能通过。
+只有 `manage:any`（或带 `*` 的等价授权）能通过。桶的配额变更、`owner`/`owner_kind`/`team` 变更，以及
+`POST /api/v1/buckets` 指定他人为 `owner`，同样用空资源追加一次 `manage` 决策（见 §6.3）。
 
 ### 2.5 服务令牌
 
@@ -171,6 +172,7 @@ bigint DEFAULT 0（0 = 无限）、`updated_at`。
 - **删除桶必须为空**：锁桶后统计 objects，非空返回 `ErrBucketNotEmpty`（`409 bucket_not_empty`），不做隐式
   递归删除。
 - **建桶**：`name` 唯一冲突 → `409 bucket_exists`；`owner_kind` 必填；id 为空时由 store 生成。
+  **更新桶**可改 `owner_id`/`owner_kind`/`team_id`/`description`/配额（`name`、id 与用量计数器不可变）。
 - **迁移**：启动时在 PostgreSQL advisory lock（键 `0x6e736366696c6577`，ASCII `nscfilew`）下先
   `CREATE SCHEMA IF NOT EXISTS filehouse`，再执行内嵌 goose 迁移（版本表 `goose_db_version` 也在该 schema
   内），幂等，多实例同时启动不会互相打断；若数据库仍留有旧版建在 `public` 的迁移（`public.goose_db_version`
@@ -293,9 +295,9 @@ reaper 启动后立即执行一轮，之后每 `FILEHOUSE_GC_INTERVAL` 一轮；
 | GET | `/healthz` | 公开 | 存活探针，恒 200 `{"status":"ok"}` |
 | GET | `/readyz` | 公开 | 就绪探针，检查 PostgreSQL 与 blob 目录可写性 |
 | GET | `/api/v1/buckets` | read（按 grants 过滤） | 列举可读桶，`limit`/`cursor` |
-| POST | `/api/v1/buckets` | write | 建桶（owner=调用者） |
+| POST | `/api/v1/buckets` | write；owner 指向他人时另需 `manage:any` | 建桶（默认 owner=调用者，可指定 team/owner） |
 | GET | `/api/v1/buckets/{bucket}` | read | 读取桶元数据 |
-| PATCH | `/api/v1/buckets/{bucket}` | write；改配额需 `manage:any` | 改描述/配额 |
+| PATCH | `/api/v1/buckets/{bucket}` | write；改配额或改 owner/owner_kind/team 需 `manage:any` | 改描述/配额/owner/团队 |
 | DELETE | `/api/v1/buckets/{bucket}` | delete | 删除空桶 |
 | GET | `/api/v1/buckets/{bucket}/objects` | read | 列举对象，`prefix`/`limit`/`cursor` |
 | PUT | `/api/v1/buckets/{bucket}/objects/{key...}` | write | 上传/覆盖对象 |
@@ -317,12 +319,18 @@ reaper 启动后立即执行一轮，之后每 `FILEHOUSE_GC_INTERVAL` 一轮；
 
 ### 6.3 端点要点
 
-**建桶** `POST /api/v1/buckets`：body `{"name","team_id","description","quota_bytes","quota_objects"}`。
-`name` 必须匹配 `^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`；配额缺省时取配置的桶默认配额。写权限按"预期桶"判定
-（owner=调用者、team=body 团队）。成功 `201` 返回完整 bucket 行；重名 `409 bucket_exists`。
+**建桶** `POST /api/v1/buckets`：body `{"name","team_id","owner","owner_kind","description","quota_bytes","quota_objects"}`。
+`name` 必须匹配 `^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`；配额缺省时取配置的桶默认配额；`team_id` 去空白后作为
+桶的团队（空 = 个人桶）。`owner` 去空白后指定归属主体（空 → `400 invalid_request`），`owner_kind` 取
+`user`/`service`：指定他人 owner 时默认 `user`，省略 owner 时用调用者自己的 kind。写权限按"预期桶"判定
+（owner=调用者、team=body 团队）；**owner 指向他人时额外要求平台级 `manage:any`**。成功 `201` 返回完整
+bucket 行；重名 `409 bucket_exists`。
 
-**改桶** `PATCH /api/v1/buckets/{bucket}`：body 至少一个字段（`description`/`quota_bytes`/`quota_objects`），
-改配额需额外通过 `manage:any`，返回更新后的 bucket 行。
+**改桶** `PATCH /api/v1/buckets/{bucket}`：body 至少一个字段
+（`description`/`quota_bytes`/`quota_objects`/`team_id`/`owner`/`owner_kind`），返回更新后的 bucket 行。改配额、
+或**实际改变** `owner`/`owner_kind`/`team_id`（把桶搬到别的授权范围）时，除桶上的 `write` 外还需通过
+`manage:any`；字段与原值相同视为未变更，不需要 manage。`team_id` 去空白，空串表示清空团队；`owner` 去空白
+且非空；`owner_kind` 仅 `user`/`service`，非法值 `400 invalid_request`。
 
 **列举桶** `GET /api/v1/buckets`：同时持有 own 与 team 读权限时，服务把两个来源按桶名归并、去重、逐行复核，
 用自己的游标翻页；其余情况按单一来源过滤。被拒绝的行不会出现在页里。

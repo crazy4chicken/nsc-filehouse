@@ -13,17 +13,22 @@ import (
 type docCreateBucketRequest struct {
 	Name         string `json:"name"`
 	TeamID       string `json:"team_id,omitempty"`
+	Owner        string `json:"owner,omitempty"`
+	OwnerKind    string `json:"owner_kind,omitempty"`
 	Description  string `json:"description,omitempty"`
 	QuotaBytes   *int64 `json:"quota_bytes,omitempty"`
 	QuotaObjects *int64 `json:"quota_objects,omitempty"`
 }
 
 // docPatchBucketRequest mirrors patchBucketRequest: every field is optional and
-// at least one must be present.
+// at least one must be present. An empty team_id clears the bucket's team.
 type docPatchBucketRequest struct {
 	Description  *string `json:"description,omitempty"`
 	QuotaBytes   *int64  `json:"quota_bytes,omitempty"`
 	QuotaObjects *int64  `json:"quota_objects,omitempty"`
+	TeamID       *string `json:"team_id,omitempty"`
+	Owner        *string `json:"owner,omitempty"`
+	OwnerKind    *string `json:"owner_kind,omitempty"`
 }
 
 // docBucketExample returns one production-shaped bucket payload; every bucket
@@ -75,13 +80,14 @@ var docBucketOperations = []apidocs.Operation{
 		},
 	},
 	{
-		Method:      "POST",
-		Path:        "/api/v1/buckets",
-		Tag:         "Buckets",
-		Summary:     "Create a bucket",
-		Description: "Use to create a bucket owned by the caller. name must match ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ (3-63 characters: lowercase letters, digits, dot and hyphen, starting and ending with an alphanumeric) and is unique; a duplicate name is 409 bucket_exists. team_id attaches the bucket to a team and is empty for a personal bucket. quota_bytes and quota_objects default to the configured bucket defaults and 0 means unlimited; negative values are 400 invalid_request. Write permission is decided against the prospective bucket (owner = caller, team = team_id) before insertion, and success is 201 with the full bucket row. The JSON body is limited to 1 MiB. Accepts Idempotency-Key: a replay of a completed request returns the original 201 response with Idempotency-Replayed: true, a concurrent request with the same key is 409 idempotency_in_progress, and reusing the key with a different body is 422 idempotency_conflict.",
-		Security:    "bearer",
-		Request:     docCreateBucketRequest{},
+		Method:         "POST",
+		Path:           "/api/v1/buckets",
+		Tag:            "Buckets",
+		Summary:        "Create a bucket",
+		Description:    "Use to create a bucket. name must match ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ (3-63 characters: lowercase letters, digits, dot and hyphen, starting and ending with an alphanumeric) and is unique; a duplicate name is 409 bucket_exists. team_id (trimmed) attaches the bucket to a team and is empty for a personal bucket. owner names the owning subject (trimmed, non-empty) and owner_kind is user or service: a foreign owner defaults to user, omitting owner keeps the caller and its own kind, and a bucket owned by another subject additionally requires the platform-wide filehouse:manage:any grant because it lands outside the caller's own scope. quota_bytes and quota_objects default to the configured bucket defaults and 0 means unlimited; negative values, an empty owner and an unknown owner_kind are 400 invalid_request. Write permission is decided against the caller's prospective bucket (owner = caller, team = team_id) before insertion, and success is 201 with the full bucket row. The JSON body is limited to 1 MiB. Accepts Idempotency-Key: a replay of a completed request returns the original 201 response with Idempotency-Replayed: true, a concurrent request with the same key is 409 idempotency_in_progress, and reusing the key with a different body is 422 idempotency_conflict.",
+		PermissionNote: "Creating a bucket owned by another subject additionally requires the platform-wide filehouse:manage:any grant.",
+		Security:       "bearer",
+		Request:        docCreateBucketRequest{},
 		RequestExample: map[string]any{
 			"name":          "media-assets",
 			"description":   "Media assets for the documentation site",
@@ -126,8 +132,8 @@ var docBucketOperations = []apidocs.Operation{
 		Path:           "/api/v1/buckets/{bucket}",
 		Tag:            "Buckets",
 		Summary:        "Update a bucket",
-		Description:    "Use to update a bucket's mutable attributes. The JSON body (limited to 1 MiB) must carry at least one of description, quota_bytes or quota_objects; an empty body or a negative quota is 400 invalid_request. Write permission on the bucket is required for every change, and setting quota_bytes or quota_objects additionally requires the platform-wide filehouse:manage:any grant because a quota bounds every future writer of the bucket. A quota of 0 means unlimited. The updated bucket is returned; an unknown name is 404 bucket_not_found.",
-		PermissionNote: "Setting quota_bytes or quota_objects additionally requires the platform-wide filehouse:manage:any grant.",
+		Description:    "Use to update a bucket's mutable attributes. The JSON body (limited to 1 MiB) must carry at least one of description, quota_bytes, quota_objects, team_id, owner or owner_kind; an empty body, a negative quota, an empty owner or an unknown owner_kind is 400 invalid_request. Write permission on the bucket is required for every change. Setting quota_bytes or quota_objects additionally requires the platform-wide filehouse:manage:any grant, because a quota bounds every future writer of the bucket, and so does changing owner, owner_kind or team_id, because those fields move the bucket between authorization scopes. team_id is trimmed and an empty value clears the bucket's team; owner is trimmed and must be non-empty; owner_kind is user or service. A field set to the value it already holds is not a change and needs no manage grant. A quota of 0 means unlimited. The updated bucket is returned; an unknown name is 404 bucket_not_found.",
+		PermissionNote: "Setting quota_bytes, quota_objects, owner, owner_kind or team_id to a different value additionally requires the platform-wide filehouse:manage:any grant.",
 		Security:       "bearer",
 		Request:        docPatchBucketRequest{},
 		RequestExample: map[string]any{

@@ -12,9 +12,6 @@ import (
 )
 
 const (
-	// verbManage is the permission action of the admin plane.
-	verbManage = "manage"
-
 	// quotaKindUser and quotaKindTeam are the quota subject kinds the admin
 	// plane accepts; the store keeps the value verbatim.
 	quotaKindUser = "user"
