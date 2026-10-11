@@ -107,9 +107,14 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 ```
 
 或推送一个 `v*` 标签，由 [release workflow](https://github.com/crazy4chicken/nsc-filehouse/blob/main/.github/workflows/release.yml) 自动构建并发布
-svchost 兼容资产 `filehouse_<version>_<arch>.zip`（`x64`、`arm64`），入口二进制
-`filehouse` 位于 ZIP 根目录；每个资产的 SHA-256 会写进该次运行页的 Summary，可直接抄进
-compose 模板的 `sha256`。`v0.1.0` 已按此流程发布（见 §3 模板中的摘要）：
+svchost 兼容资产 `filehouse_<tag>_<platform>_<arch>.zip`：版本段是标签原文（含 `v`），
+平台段必须与目标节点操作系统一致（`windows`/`linux`/`macos`/`freebsd`），架构段取
+`x64` 或 `arm64`；本仓库发布 `linux`、`windows`、`macos` 三平台各两架构，例如标签
+`v1.2.3` 产出 `filehouse_v1.2.3_linux_x64.zip`、`filehouse_v1.2.3_windows_arm64.zip`、
+`filehouse_v1.2.3_macos_x64.zip` 等六个资产。入口二进制位于 ZIP 根目录：POSIX 平台为
+`filehouse`，Windows 为 `filehouse.exe`；每个资产的 SHA-256（针对 ZIP 本身）会写进该次
+运行页的 Summary，可直接抄进 compose 模板的 `sha256`。`v0.1.0` 已按此流程发布
+（见 §3 模板中的摘要）：
 
 ```sh
 git tag v0.1.0 && git push origin v0.1.0
@@ -159,7 +164,9 @@ services:
 
   filehouse:
     source:
-      # v0.1.0 已发布；下面是两个架构资产在 GitHub release API 上的真实摘要：
+      # v0.1.0 已发布；下面是两个架构资产在 GitHub release API 上的真实摘要。
+      # 该版本的资产名是旧 3 段式（svchost 视为 linux，仍可安装），新版本一律用
+      # filehouse_<tag>_<platform>_<arch>.zip（linux/windows/macos × x64/arm64）：
       #   x64   filehouse_0.1.0_x64.zip   57a6c9c9b798fa22fadcc2b614f94b2c7395da5dde692d2737f19b9e1ead8c2c
       #   arm64 filehouse_0.1.0_arm64.zip 58c7b1dc778ef19563cf6a9dd220db3d0e582d9486ec53e885868fd9788cd273
       # 后续版本：推 v* 标签让 release workflow 发布资产，摘要见该次运行的 Summary；
@@ -208,9 +215,9 @@ services:
   `FILEHOUSE_KEY_DIR` 必须写成绝对路径。
 - `${HOST@teamusers}:${PORT@teamusers}` 读取目标服务运行时的租约地址；若 teamusers 由
   另一份 compose 文档或另一台主机托管，改用它的固定地址（如 `http://10.0.0.2:8099`）。
-- `strictSources: true` 要求每个来源显式声明 `sha256`。一个摘要只对应一个架构的 ZIP：
-  混合架构节点请去掉 `strictSources`（lock 仍会记录本节点首次下载的摘要），或按架构
-  拆成多份 `serviceScope: document` 配置。
+- `strictSources: true` 要求每个来源显式声明 `sha256`。一个摘要只对应一个平台+架构的 ZIP：
+  混合平台或混合架构节点请去掉 `strictSources`（lock 仍会记录本节点首次下载的摘要），
+  或按平台/架构拆成多份 `serviceScope: document` 配置。
 - 密钥（DSN 口令、`client_secret`）在宿主侧是明文存储的，按密钥设施的要求限制配置读权限；
   不要提交到版本库，也不要写进日志或示例。
 - `route.prefix` + `strip: true` 与 `ForwardingMode=Strip` 等价。本服务的路由是根相对的，
