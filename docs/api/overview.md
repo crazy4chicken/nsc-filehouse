@@ -94,6 +94,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 | Multipart upload lifetime | 24h (`FILEHOUSE_UPLOAD_TTL`) | expired uploads answer `410 upload_expired` |
 | Presign TTL | 15m default, 24h maximum (`FILEHOUSE_PRESIGN_DEFAULT_TTL`, `FILEHOUSE_PRESIGN_MAX_TTL`) | `ttl_seconds` on `POST /api/v1/presign`; above the maximum answers `400 invalid_request` |
 
+JSON request bodies are decoded **strictly**: a member the endpoint does not define - a misspelled or aliased field such as `owner_id` where the request member is `owner` - answers `400 invalid_request` with the offending name in the `reason` member, and nothing from that request is applied. A body carrying a second JSON document is rejected the same way. Request and response member names differ on purpose (`owner` in, `owner_id` out), so the reason makes a slipped name obvious instead of leaving a silent no-op.
+
 Writes converge on one commit path: an object PUT answers `201` even when it overwrites an existing key, identical SHA-256 content shares a single blob file, and a quota rejection (bucket, owner, or team quota; `0` means unlimited) answers `413 quota_exceeded`. The service has no request-rate limiting; apply it at the ingress proxy if needed. See the [uploads guide](../guide/uploads) for the full direct-upload, multipart, and presign flows.
 
 ## Contract source

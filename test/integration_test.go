@@ -508,6 +508,40 @@ func TestBucketOwnerAndTeamAssignment(t *testing.T) {
 		[]byte(`{"name":"assign-bad-kind","owner_kind":"robot"}`), nil), http.StatusBadRequest, "invalid_request")
 }
 
+// TestBucketAssignmentRejectsUnknownFields covers the typo trap: a client that
+// sends the response member name (owner_id) instead of the request member name
+// (owner) is answered 400 naming the offending field, never a 200 that kept the
+// previous owner while claiming success.
+func TestBucketAssignmentRejectsUnknownFields(t *testing.T) {
+	h := newHarness(t)
+	manager := h.authorize("amy",
+		iamfixture.Grant{Key: "filehouse:read:own"},
+		iamfixture.Grant{Key: "filehouse:write:own"},
+		iamfixture.Grant{Key: "filehouse:manage:any"},
+	)
+	requireStatus(t, h.mustDo(t, http.MethodPost, "/api/v1/buckets", manager,
+		[]byte(`{"name":"strict-bucket"}`), nil), http.StatusCreated)
+
+	problem := requireProblem(t, h.mustDo(t, http.MethodPatch, "/api/v1/buckets/strict-bucket", manager,
+		[]byte(`{"owner_id":"bob","description":"typo"}`), nil), http.StatusBadRequest, "invalid_request")
+	if !strings.Contains(problem.Reason, "owner_id") {
+		t.Fatalf("reason = %q, want the offending member", problem.Reason)
+	}
+
+	// Nothing from the rejected request reached the bucket.
+	bucket := decodeJSON[store.Bucket](t, h.mustDo(t, http.MethodGet, "/api/v1/buckets/strict-bucket", manager, nil, nil))
+	if bucket.OwnerID != "amy" || bucket.Description != "" {
+		t.Fatalf("bucket = %+v, want owner amy and an untouched description", bucket)
+	}
+
+	// Creation is guarded the same way.
+	createProblem := requireProblem(t, h.mustDo(t, http.MethodPost, "/api/v1/buckets", manager,
+		[]byte(`{"name":"strict-bucket-2","owner_id":"bob"}`), nil), http.StatusBadRequest, "invalid_request")
+	if !strings.Contains(createProblem.Reason, "owner_id") {
+		t.Fatalf("reason = %q, want the offending member", createProblem.Reason)
+	}
+}
+
 // TestUnrelatedPermissionForbidden covers (2): a subject holding only an
 // unrelated grant cannot read a foreign bucket.
 func TestUnrelatedPermissionForbidden(t *testing.T) {

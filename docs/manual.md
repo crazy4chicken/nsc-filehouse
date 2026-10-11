@@ -271,6 +271,9 @@ reaper 启动后立即执行一轮，之后每 `FILEHOUSE_GC_INTERVAL` 一轮；
   `{"type":"about:blank","title":"...","status":<code>,"detail":"<稳定错误码>","instance":"<request id>"}`；
   403 额外带 `reason`（尝试过的权限键）。未知路径 `404 invalid_request`，方法不允许 `405 invalid_request`。
 - **请求体**：JSON 解析上限 1 MiB，超限 `413 payload_too_large`；解析失败或字段非法 `400 invalid_request`。
+  解析是**严格**的：请求里出现端点未定义的成员（例如把请求字段 `owner` 误写成响应字段 `owner_id`）会以
+  `400 invalid_request` 拒绝，`reason` 指出具体成员名（`unknown request field "owner_id"`），且该请求不会
+  写入任何字段；body 里出现第二个 JSON 文档同样拒绝。
 - **分页**：`?limit=`（默认 100，最大 1000，0/缺省取默认，负数或非法 400）；`?cursor=` 是不透明令牌。普通列举
   由 store 生成 `{"v":1,"s":"<scope>","c":...}`（base64url，`s` 绑定查询，跨查询复用报 400）；own+team 合并桶
   列表用 httpx 的 `{"v":1,"c":...}`（无 scope 字段，外来游标不会被判为非法）。响应
@@ -391,7 +394,7 @@ limit=&cursor=` 按 `(subject_kind, subject_id)` 排序；`PUT /api/v1/admin/quo
 | --- | --- | --- |
 | 400 | `invalid_bucket_name` | 桶名不匹配语法：建桶、路径参数、预签名请求 |
 | 400 | `invalid_key` | 对象 key 非法：PUT/GET/DELETE 对象、发起上传、预签名请求 |
-| 400 | `invalid_request` | JSON 解析失败、参数非法（limit/负数配额/非法 method/TTL 超上限/非法 kind/cursor 非法/分片列表非法）；未知路径（404）与方法不允许（405）也用它 |
+| 400 | `invalid_request` | JSON 解析失败、请求体含未定义成员（`reason` 给出成员名，如 `unknown request field "owner_id"`）、第二个 JSON 文档、参数非法（limit/负数配额/非法 method/TTL 超上限/非法 kind/cursor 非法/分片列表非法）；未知路径（404）与方法不允许（405）也用它 |
 | 401 | `invalid_token` 及其分类码 | 无 header（`invalid_token_missing`）、header 非单一 Bearer 或 JWS 不可解析（`_malformed`）、过期（`_expired`）、`aud`/`iss` 不匹配（`_audience`/`_issuer`）、验签失败（`_signature`）、claims 非法（`_claims`）、JWKS 拉取失败（`_jwks`）；无法归类时用兜底 `invalid_token` |
 | 403 | `insufficient_permissions` | 级联拒绝（含缓存/传输失败被 SDK 折合的拒绝）；`reason` 列出尝试过的权限键或失败原因（如 `authorization service unavailable`） |
 | 403 | `presign_invalid` | 签名缺失、伪造、不匹配方法/桶/key |

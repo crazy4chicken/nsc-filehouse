@@ -141,7 +141,10 @@ func (s *Server) bucketFor(w http.ResponseWriter, r *http.Request) (store.Bucket
 }
 
 // decodeRequestBody decodes a size limited JSON body and writes the problem
-// response itself (413 payload_too_large or 400 invalid_request).
+// response itself (413 payload_too_large or 400 invalid_request). A body member
+// the target struct does not define (a misspelled or aliased field, for example
+// owner_id instead of owner) is reported with the offending name in the reason,
+// so a client cannot mistake the silently dropped field for an applied change.
 func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	err := httpx.DecodeJSON(w, r, dst)
 	if err == nil {
@@ -149,6 +152,11 @@ func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	}
 	if errors.Is(err, httpx.ErrBodyTooLarge) {
 		httpx.WriteProblem(w, r, http.StatusRequestEntityTooLarge, "", "payload_too_large")
+		return false
+	}
+	var unknown *httpx.UnknownFieldError
+	if errors.As(err, &unknown) {
+		httpx.WriteProblemReason(w, r, http.StatusBadRequest, "", "invalid_request", unknown.Error())
 		return false
 	}
 	httpx.WriteProblem(w, r, http.StatusBadRequest, "", "invalid_request")
